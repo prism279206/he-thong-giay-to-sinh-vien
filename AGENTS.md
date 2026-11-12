@@ -76,10 +76,14 @@ Mỗi loại thủ tục có đường đi riêng (online, chụp ảnh giấy k
 5. Mỗi người chỉ sửa `docs/STATE_<tên>.md` của mình.
 
 **Git:**
-1. Không push thẳng `main`. Mỗi việc một nhánh: `feat/<a|b>-<việc>`, ví dụ `feat/b-student-form`.
-2. Làm xong mở Pull Request, người kia xem qua rồi mới merge. Khi review, kiểm tra AI có sửa file ngoài phạm vi không.
-3. Commit nhỏ, thường xuyên, thông điệp rõ ràng (`feat:`, `fix:`, `chore:`, `docs:`).
-4. Trước khi bắt đầu làm: `git pull`. Nên commit `package-lock.json`.
+1. Làm việc và push thẳng lên `main`, không dùng nhánh phụ hay Pull Request.
+2. Commit nhỏ, thường xuyên, mỗi commit một việc, thông điệp rõ ràng (`feat:`, `fix:`, `chore:`, `docs:`).
+3. Trước khi bắt đầu làm: `git pull --rebase`. Trước khi push: `git pull --rebase` lần nữa, chạy `npm run dev` kiểm tra không lỗi rồi mới `git push`.
+4. Không bao giờ dùng `git push --force`, `git reset --hard` hoặc xóa lịch sử khi chưa hỏi người dùng.
+5. Chỉ commit file trong vùng của mình. Trước khi commit chạy `git status` và `git diff`, kiểm tra AI có sửa file ngoài phạm vi không.
+6. Gặp xung đột (conflict): dừng lại, báo người dùng, không tự chọn bên nào.
+7. Thay đổi trong `supabase/` (migration, RLS) và hợp đồng `services/`: nhắn người kia xem trước khi push.
+8. Nên commit `package-lock.json`.
 
 ## 8. Cách AI làm việc
 
