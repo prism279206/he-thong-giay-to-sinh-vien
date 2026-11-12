@@ -5,10 +5,12 @@ Cập nhật: 2026-11-12
 Vùng sở hữu: `src/pages/`, `src/components/`
 
 ## Đã xong
-- (chưa có)
+- Kích hoạt `@tailwindcss/vite` trong `vite.config.js` và `src/index.css`
+- Tạo giao diện màn hình Đăng nhập đầu tiên (`src/pages/LoginPage.jsx`) và tài khoản ảo để test đăng nhập
+- Tạo trang Tổng quan sinh viên sau khi đăng nhập (`src/pages/StudentDashboardPage.jsx`) và màn hình chọn loại đơn (`src/components/RequestTypePicker.jsx`) nối qua `src/App.jsx`
 
 ## Đang làm
-- Chuẩn bị môi trường làm việc trên máy
+- Chuẩn bị gắn form chi tiết cho từng loại đơn và dựng tiếp các trang chi tiết/bổ sung hồ sơ với `react-router-dom`
 
 ## Kế tiếp
 1. Cài môi trường: Node.js bản LTS mới (từ 20.19 hoặc 22.12 trở lên), Git
