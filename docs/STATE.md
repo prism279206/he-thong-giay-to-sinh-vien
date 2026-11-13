@@ -1,13 +1,14 @@
 # STATE – B (giao diện)
 
 Người phụ trách: (điền tên)
-Cập nhật: 2026-11-12
+Cập nhật: 2026-11-13
 Vùng sở hữu: `src/pages/`, `src/components/`
 
 ## Đã xong
 - Kích hoạt `@tailwindcss/vite` trong `vite.config.js` và `src/index.css`
 - Tạo giao diện màn hình Đăng nhập đầu tiên (`src/pages/LoginPage.jsx`) và tài khoản ảo để test đăng nhập
 - Tạo trang Tổng quan sinh viên sau khi đăng nhập (`src/pages/StudentDashboardPage.jsx`) và màn hình chọn loại đơn (`src/components/RequestTypePicker.jsx`) nối qua `src/App.jsx`
+- Triển khai mục Quản lý chữ ký cá nhân (`src/components/SignatureManager.jsx`): tải ảnh chữ ký tự động tách nền giấy trắng/xám bằng Canvas thuần không cần thư viện ngoài, tùy chỉnh độ nhạy & màu mực, hỗ trợ ký tay/chuột trực tiếp trên màn hình, lưu và tải file PNG trong suốt.
 
 ## Đang làm
 - Chuẩn bị gắn form chi tiết cho từng loại đơn và dựng tiếp các trang chi tiết/bổ sung hồ sơ với `react-router-dom`
