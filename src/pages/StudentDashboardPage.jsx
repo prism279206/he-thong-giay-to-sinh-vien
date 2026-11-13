@@ -19,6 +19,7 @@ import {
 } from 'lucide-react';
 import { DEFAULT_LOGO_SRC } from './LoginPage';
 import RequestTypePicker from '../components/RequestTypePicker';
+import SignatureManager from '../components/SignatureManager';
 
 // Dữ liệu giả danh sách đơn (sau này thay bằng requestService.listMine() từ Supabase)
 const MOCK_REQUESTS = [
@@ -465,15 +466,7 @@ function StudentDashboardPage({ user, logoSrc = DEFAULT_LOGO_SRC, onLogout }) {
             </section>
           )}
 
-          {activeTab === 'signature' && (
-            <section className="rounded-2xl border border-slate-200/70 bg-white p-8 text-center shadow-xs">
-              <PenTool className="mx-auto h-10 w-10 text-[#2563EB]" />
-              <h1 className="mt-3 text-lg font-bold text-slate-800">Chữ ký cá nhân</h1>
-              <p className="mt-1 text-sm text-slate-500">
-                Chức năng quản lý mẫu chữ ký cá nhân sẽ được bổ sung ở giai đoạn tiếp theo.
-              </p>
-            </section>
-          )}
+          {activeTab === 'signature' && <SignatureManager />}
 
           {activeTab === 'profile' && (
             <section className="rounded-2xl border border-slate-200/70 bg-white p-6 shadow-xs sm:p-8">
