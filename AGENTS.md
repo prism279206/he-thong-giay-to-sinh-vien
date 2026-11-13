@@ -5,12 +5,12 @@ Website để sinh viên nộp và theo dõi thủ tục (giấy xác nhận sin
 ## 1. Đầu phiên và cuối phiên
 
 **Đầu phiên (bắt buộc):**
-1. Chạy `git pull`.
-2. Đọc `docs/SPEC.md`, `docs/SPECLEARN.md`, `docs/STATE_a.md`, `docs/STATE_b.md`.
-3. Tóm tắt ngắn: dự án đang ở đâu, việc kế tiếp của người đang làm là gì. Chờ xác nhận rồi mới code.
+1. Chạy `git pull --rebase`.
+2. Đọc `docs/SPEC.md`, `docs/SPECLEARN.md`, `docs/STATE.md`.
+3. Tóm tắt ngắn: dự án đang ở đâu, việc kế tiếp là gì. Chờ xác nhận rồi mới code.
 
 **Cuối phiên:**
-1. Cập nhật STATE của người đang làm (chỉ file của mình).
+1. Cập nhật `docs/STATE.md`: chuyển việc đã xong sang mục "Đã xong", ghi việc đang làm và việc kế tiếp. Chỉ sửa các dòng liên quan việc vừa làm, thêm việc mới ở cuối mục, không viết lại cả file.
 2. Có quyết định mới hoặc lỗi đáng nhớ thì ghi vào `docs/SPECLEARN.md`.
 
 ## 2. Stack
@@ -58,7 +58,7 @@ Mỗi loại thủ tục có đường đi riêng (online, chụp ảnh giấy k
 
 1. Mọi thay đổi database viết thành file migration SQL trong `supabase/migrations/`, đặt tên theo thời gian, ví dụ `20261112_add_workflows.sql`. Không sửa tay trên dashboard rồi bỏ qua file.
 2. Chỉ **người A** tạo và sửa migration. Người B cần đổi schema thì báo người A (qua issue hoặc tin nhắn).
-3. Thay đổi schema có ảnh hưởng người kia phải ghi trong STATE.
+3. Thay đổi schema có ảnh hưởng người kia phải ghi vào mục "Thay đổi ảnh hưởng người còn lại" trong `docs/STATE.md`.
 
 ## 7. Làm việc nhóm (2 người)
 
@@ -73,7 +73,7 @@ Mỗi loại thủ tục có đường đi riêng (online, chụp ảnh giấy k
 2. AI không được refactor, đổi tên hoặc xóa file ngoài phạm vi việc được yêu cầu.
 3. Hai bên giao tiếp qua "hợp đồng" là danh sách hàm trong `src/services/` (tên, tham số, kết quả trả về), ghi trong `docs/SPEC.md`. Đổi hợp đồng phải báo người kia.
 4. B có thể làm giao diện bằng dữ liệu giả (mock) khi service của A chưa xong.
-5. Mỗi người chỉ sửa `docs/STATE_<tên>.md` của mình.
+5. `docs/STATE.md` là danh sách chung của cả nhóm. Trước khi sửa chạy `git pull --rebase`, chỉ thêm hoặc sửa các dòng liên quan việc mình làm, không viết lại cả file, để tránh xung đột Git.
 
 **Git:**
 1. Làm việc và push thẳng lên `main`, không dùng nhánh phụ hay Pull Request.
