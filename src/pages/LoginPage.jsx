@@ -3,14 +3,27 @@ import { User, Lock, Eye, EyeOff, ShieldAlert } from 'lucide-react';
 
 const SAVED_IDENTIFIER_KEY = 'vmh_saved_user';
 
-// Tài khoản ảo dùng tạm khi chưa kết nối database (sau này thay bằng authService)
-const MOCK_STUDENT_ACCOUNT = {
-    studentCode: '24123456',
-    email: 'sinhvien@caodangvietmyhanoi.edu.vn',
-    password: '123456',
-    fullName: 'Sinh viên thử nghiệm',
-    role: 'student',
-};
+// Danh sách tài khoản thử nghiệm theo từng phân quyền (sau này nối Supabase Auth)
+const MOCK_ACCOUNTS = [
+    {
+        code: '24123456',
+        email: 'sinhvien@caodangvietmyhanoi.edu.vn',
+        password: '123456',
+        fullName: 'Nguyễn Văn Tiến',
+        studentCode: '24123456',
+        role: 'student',
+    },
+    {
+        code: 'GV001',
+        email: 'maiant@caodangvietmyhanoi.edu.vn',
+        password: '123456',
+        fullName: 'Nguyễn Thị Mai',
+        teacherCode: 'GV001',
+        role: 'teacher',
+        title: 'Giảng viên',
+        department: 'Khoa Công nghệ thông tin',
+    },
+];
 
 // Đường dẫn ảnh logo mặc định của trường (có thể ghi đè qua prop logoSrc từ App.jsx).
 export const DEFAULT_LOGO_SRC =
@@ -123,24 +136,21 @@ function LoginPage({ logoSrc = DEFAULT_LOGO_SRC, onLoginSuccess }) {
                 localStorage.removeItem(SAVED_IDENTIFIER_KEY);
             }
 
-            const isValidAccount =
-                (trimmedIdentifier === MOCK_STUDENT_ACCOUNT.studentCode ||
-                    trimmedIdentifier.toLowerCase() === MOCK_STUDENT_ACCOUNT.email) &&
-                password === MOCK_STUDENT_ACCOUNT.password;
+            const matchedAccount = MOCK_ACCOUNTS.find(
+                (acc) =>
+                    (acc.code === trimmedIdentifier ||
+                        acc.email.toLowerCase() === trimmedIdentifier.toLowerCase()) &&
+                    acc.password === password
+            );
 
-            if (isValidAccount) {
+            if (matchedAccount) {
                 if (onLoginSuccess) {
-                    onLoginSuccess({
-                        studentCode: MOCK_STUDENT_ACCOUNT.studentCode,
-                        email: MOCK_STUDENT_ACCOUNT.email,
-                        fullName: MOCK_STUDENT_ACCOUNT.fullName,
-                        role: MOCK_STUDENT_ACCOUNT.role,
-                    });
+                    onLoginSuccess(matchedAccount);
                 } else {
                     alert('Đăng nhập thành công! (Đang dùng tài khoản ảo)');
                 }
             } else {
-                setError('Mã sinh viên, email hoặc mật khẩu không chính xác.');
+                setError('Mã đăng nhập, email hoặc mật khẩu không chính xác.');
             }
         }, 500);
     };
@@ -204,7 +214,7 @@ function LoginPage({ logoSrc = DEFAULT_LOGO_SRC, onLoginSuccess }) {
                                     autoComplete="username"
                                     value={identifier}
                                     onChange={(e) => setIdentifier(e.target.value)}
-                                    placeholder="Mã sinh viên hoặc email trường"
+                                    placeholder="Mã SV / Mã GV hoặc email trường"
                                     className="w-full rounded-xl border border-slate-200 bg-white py-3 pr-4 pl-11 text-sm text-slate-800 placeholder-slate-400 transition-all focus:border-[#1D63EB] focus:ring-4 focus:ring-blue-500/12 focus:outline-none"
                                 />
                             </div>

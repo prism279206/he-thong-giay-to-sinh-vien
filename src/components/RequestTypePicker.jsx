@@ -11,6 +11,7 @@ import {
   Bus,
   ClipboardList,
 } from 'lucide-react';
+import StudentConfirmationForm from './StudentConfirmationForm';
 
 // Dữ liệu mẫu các loại đơn (sau này thay bằng requestTypeService.listActive() từ Supabase)
 const MOCK_REQUEST_TYPES = [
@@ -68,7 +69,7 @@ const MOCK_REQUEST_TYPES = [
  * Giao diện chọn loại đơn khi người dùng nhấn "+ Tạo đơn mới".
  * Sau này sẽ nối trực tiếp với danh sách `request_types` và bộ render `form_schema`.
  */
-function RequestTypePicker({ onBack }) {
+function RequestTypePicker({ onBack, user }) {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedType, setSelectedType] = useState(null);
 
@@ -79,8 +80,17 @@ function RequestTypePicker({ onBack }) {
       item.description.toLowerCase().includes(normalizedSearch)
   );
 
-  // Màn hình chờ gắn form chi tiết sau khi đã chọn 1 loại đơn
+  // Màn hình chi tiết khi đã chọn 1 loại đơn
   if (selectedType) {
+    if (selectedType.id === 'rt-confirm-student') {
+      return (
+        <StudentConfirmationForm
+          onBack={() => setSelectedType(null)}
+          user={user}
+        />
+      );
+    }
+
     const SelectedIcon = selectedType.icon;
 
     return (

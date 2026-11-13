@@ -358,7 +358,7 @@ function StudentDashboardPage({ user, logoSrc = DEFAULT_LOGO_SRC, onLogout }) {
         {/* Nội dung chính theo tab đang chọn */}
         <main className="mx-auto w-full max-w-6xl flex-1 p-4 sm:p-8">
           {activeTab === 'create-request' && (
-            <RequestTypePicker onBack={() => setActiveTab('overview')} />
+            <RequestTypePicker onBack={() => setActiveTab('overview')} user={user} />
           )}
 
           {activeTab === 'overview' && (
