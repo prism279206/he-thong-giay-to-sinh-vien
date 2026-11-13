@@ -23,6 +23,15 @@ const MOCK_ACCOUNTS = [
         title: 'Giảng viên',
         department: 'Khoa Công nghệ thông tin',
     },
+    {
+        code: 'QL001',
+        email: 'ql001@caodangvietmyhanoi.edu.vn',
+        password: '123456',
+        fullName: 'Cán bộ Quản lý - Ban Tiếp nhận Một cửa',
+        role: 'admin',
+        title: 'Cán bộ quản lý tiếp nhận & điều phối',
+        department: 'Phòng Hành chính - Một cửa & Quản lý Đào tạo',
+    },
 ];
 
 // Đường dẫn ảnh logo mặc định của trường (có thể ghi đè qua prop logoSrc từ App.jsx).
@@ -138,7 +147,7 @@ function LoginPage({ logoSrc = DEFAULT_LOGO_SRC, onLoginSuccess }) {
 
             const matchedAccount = MOCK_ACCOUNTS.find(
                 (acc) =>
-                    (acc.code === trimmedIdentifier ||
+                    (acc.code.toLowerCase() === trimmedIdentifier.toLowerCase() ||
                         acc.email.toLowerCase() === trimmedIdentifier.toLowerCase()) &&
                     acc.password === password
             );
@@ -214,7 +223,7 @@ function LoginPage({ logoSrc = DEFAULT_LOGO_SRC, onLoginSuccess }) {
                                     autoComplete="username"
                                     value={identifier}
                                     onChange={(e) => setIdentifier(e.target.value)}
-                                    placeholder="Mã SV / Mã GV hoặc email trường"
+                                    placeholder="Mã SV / GV / QL hoặc email trường"
                                     className="w-full rounded-xl border border-slate-200 bg-white py-3 pr-4 pl-11 text-sm text-slate-800 placeholder-slate-400 transition-all focus:border-[#1D63EB] focus:ring-4 focus:ring-blue-500/12 focus:outline-none"
                                 />
                             </div>
@@ -275,6 +284,47 @@ function LoginPage({ logoSrc = DEFAULT_LOGO_SRC, onLoginSuccess }) {
                                 'Đăng nhập'
                             )}
                         </button>
+
+                        {/* Chọn nhanh tài khoản mẫu để test */}
+                        <div className="pt-2">
+                            <div className="flex items-center gap-2 mb-2">
+                                <div className="h-px flex-1 bg-slate-200" />
+                                <span className="text-[11px] font-medium text-slate-400">Chọn nhanh tài khoản thử nghiệm</span>
+                                <div className="h-px flex-1 bg-slate-200" />
+                            </div>
+                            <div className="grid grid-cols-3 gap-1.5 text-center">
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        setIdentifier('24123456');
+                                        setPassword('123456');
+                                    }}
+                                    className="rounded-lg border border-slate-200 bg-slate-50 py-1.5 px-2 text-[11px] font-medium text-slate-600 hover:bg-blue-50 hover:text-blue-700 hover:border-blue-200 transition-colors"
+                                >
+                                    Sinh viên
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        setIdentifier('GV001');
+                                        setPassword('123456');
+                                    }}
+                                    className="rounded-lg border border-slate-200 bg-slate-50 py-1.5 px-2 text-[11px] font-medium text-slate-600 hover:bg-blue-50 hover:text-blue-700 hover:border-blue-200 transition-colors"
+                                >
+                                    Giảng viên
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        setIdentifier('QL001');
+                                        setPassword('123456');
+                                    }}
+                                    className="rounded-lg border border-amber-200 bg-amber-50/70 py-1.5 px-2 text-[11px] font-semibold text-amber-800 hover:bg-amber-100 transition-colors"
+                                >
+                                    Quản lý (Admin)
+                                </button>
+                            </div>
+                        </div>
                     </form>
                 </div>
             </main>
