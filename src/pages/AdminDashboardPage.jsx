@@ -1,9 +1,8 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useRef } from 'react';
 import {
   Home,
   ClipboardList,
   History,
-  PenTool,
   User,
   LogOut,
   Search,
@@ -27,9 +26,19 @@ import {
   Eye,
   Inbox,
   Check,
+  Layers,
+  Camera,
+  Upload,
+  Plus,
+  FileCheck2,
+  Download,
+  Image as ImageIcon,
+  FileUp,
+  ToggleLeft,
+  ToggleRight,
+  Sparkles,
 } from 'lucide-react';
 import { DEFAULT_LOGO_SRC } from './LoginPage';
-import SignatureManager from '../components/SignatureManager';
 
 /**
  * Tính toán danh sách 4 khóa học đang hoạt động (đồng bộ hệ thống)
@@ -72,6 +81,122 @@ export const LECTURERS = [
   { id: 'GV005', name: 'ThS. Đỗ Thúy Hằng', code: 'GV005', faculty: 'Khoa Ngoại ngữ', role: 'GVCN CD-TA-K24A' },
 ];
 
+// Danh mục các loại đơn ban đầu trong hệ thống
+const INITIAL_REQUEST_TYPES = [
+  {
+    id: 'rt-confirm-student',
+    code: 'XAC_NHAN_SV',
+    name: 'Đơn xin cấp xác nhận học sinh - sinh viên',
+    category: 'Xác nhận học tập',
+    departmentName: 'Phòng Đào tạo & Quản lý Khoa học',
+    slaDays: 2,
+    description: 'Dùng để xác nhận đang theo học tại trường để vay vốn ngân hàng, tạm hoãn nghĩa vụ quân sự, bổ sung hồ sơ...',
+    isActive: true,
+    hasTemplateFile: true,
+    templateFileName: 'Mau_Don_Xac_Nhan_HSSV.pdf',
+    templateFileSize: '124 KB',
+    templateFileUrl: null,
+  },
+  {
+    id: 'rt-transcript',
+    code: 'CAP_BANG_DIEM',
+    name: 'Đơn xin cấp bảng điểm',
+    category: 'Học vụ & Đào tạo',
+    departmentName: 'Phòng Đào tạo & Quản lý Khoa học',
+    slaDays: 3,
+    description: 'Đề nghị cấp bảng điểm quá trình học tập các học kỳ hoặc bảng điểm tốt nghiệp có xác nhận của nhà trường.',
+    isActive: true,
+    hasTemplateFile: true,
+    templateFileName: 'Mau_Don_Xin_Bang_Diem.pdf',
+    templateFileSize: '98 KB',
+    templateFileUrl: null,
+  },
+  {
+    id: 'rt-tuition-waiver',
+    code: 'MIEN_GIAM_HOC_PHI',
+    name: 'Đơn xin miễn giảm học phí',
+    category: 'Học phí & Tài chính',
+    departmentName: 'Phòng Tài chính - Kế toán',
+    slaDays: 5,
+    description: 'Dành cho sinh viên thuộc diện chính sách, con thương binh liệt sĩ, hộ nghèo hoặc các đối tượng được hỗ trợ theo quy định.',
+    isActive: true,
+    hasTemplateFile: true,
+    templateFileName: 'Mau_Don_Mien_Giam_Hoc_Phi.pdf',
+    templateFileSize: '215 KB',
+    templateFileUrl: null,
+  },
+  {
+    id: 'rt-defer',
+    code: 'BAO_LUU',
+    name: 'Đơn xin bảo lưu kết quả học tập',
+    category: 'Học vụ & Đào tạo',
+    departmentName: 'Ban Giám hiệu & Phòng Đào tạo',
+    slaDays: 3,
+    description: 'Đề nghị tạm dừng tiến độ học và bảo lưu kết quả học tập tối đa 02 học kỳ vì lý do sức khỏe hoặc gia đình.',
+    isActive: true,
+    hasTemplateFile: true,
+    templateFileName: 'Mau_Don_Xin_Bao_Luu.pdf',
+    templateFileSize: '150 KB',
+    templateFileUrl: null,
+  },
+  {
+    id: 'rt-recheck-exam',
+    code: 'PHUC_KHAO',
+    name: 'Đơn xin phúc khảo bài thi',
+    category: 'Khảo thí & Điểm',
+    departmentName: 'Trung tâm Khảo thí & ĐBCL',
+    slaDays: 7,
+    description: 'Đề nghị rút bài thi và thành lập ban chấm phúc khảo điểm bài thi kết thúc học phần trong thời hạn 15 ngày.',
+    isActive: true,
+    hasTemplateFile: true,
+    templateFileName: 'Mau_Don_Phuc_Khao_Diem.pdf',
+    templateFileSize: '112 KB',
+    templateFileUrl: null,
+  },
+  {
+    id: 'rt-exam-delay',
+    code: 'HOAN_THI',
+    name: 'Đơn xin tạm hoãn thi kết thúc học phần',
+    category: 'Khảo thí & Điểm',
+    departmentName: 'Trung tâm Khảo thí & ĐBCL',
+    slaDays: 2,
+    description: 'Đề nghị hoãn thi kết thúc môn vì lý do ốm đau cấp cứu hoặc trường hợp bất khả kháng, có giấy viện kèm theo.',
+    isActive: true,
+    hasTemplateFile: true,
+    templateFileName: 'Mau_Don_Xin_Hoan_Thi.pdf',
+    templateFileSize: '86 KB',
+    templateFileUrl: null,
+  },
+  {
+    id: 'rt-dormitory',
+    code: 'DANG_KY_KTX',
+    name: 'Đơn đăng ký chỗ ở Ký túc xá',
+    category: 'Đời sống sinh viên',
+    departmentName: 'Ban Quản lý Ký túc xá',
+    slaDays: 2,
+    description: 'Đăng ký phòng ở nội trú tại khu ký túc xá sinh viên dành cho tân sinh viên hoặc sinh viên ở xa.',
+    isActive: true,
+    hasTemplateFile: true,
+    templateFileName: 'Mau_Don_Dang_Ky_KTX.pdf',
+    templateFileSize: '180 KB',
+    templateFileUrl: null,
+  },
+  {
+    id: 'rt-bus-pass',
+    code: 'VE_THANG_XE_BUYT',
+    name: 'Đăng ký xác nhận làm vé tháng xe buýt',
+    category: 'Đời sống sinh viên',
+    departmentName: 'Phòng Công tác Sinh viên',
+    slaDays: 1,
+    description: 'Đóng dấu xác nhận sinh viên trên bản khai đăng ký vé tháng xe buýt liên tuyến của Tổng công ty Vận tải.',
+    isActive: true,
+    hasTemplateFile: true,
+    templateFileName: 'Mau_Don_Ve_Thang_Xe_Buyt.pdf',
+    templateFileSize: '92 KB',
+    templateFileUrl: null,
+  },
+];
+
 // Dữ liệu mô phỏng các đơn từ sinh viên nộp lên hệ thống
 const INITIAL_ADMIN_REQUESTS = [
   {
@@ -80,16 +205,16 @@ const INITIAL_ADMIN_REQUESTS = [
     typeCategory: 'Xác nhận học tập',
     studentName: 'Trần Văn Minh',
     studentCode: '24123456',
-    cohort: ACTIVE_COHORTS[2], // K25
+    cohort: ACTIVE_COHORTS[2],
     faculty: 'Khoa Công nghệ thông tin',
     major: 'Công nghệ thông tin',
     className: `CD-CNTT-${ACTIVE_COHORTS[2]}A`,
     createdAt: '13/11/2026 14:15',
-    status: 'pending', // pending: Chờ tiếp nhận/phân phát | in_progress: Đang xử lý (đã phân phối) | completed: Đã hoàn tất | overdue: Quá hạn
+    status: 'pending',
     statusLabel: 'Chờ tiếp nhận',
     reason: 'Vay vốn học sinh sinh viên tại Ngân hàng Chính sách Xã hội địa phương.',
     urgency: 'normal',
-    distributionStatus: 'unassigned', // unassigned | assigned | resolved | rejected
+    distributionStatus: 'unassigned',
     assignedTo: null,
     logs: [
       { action: 'Nộp đơn', actor: 'Trần Văn Minh (Sinh viên)', time: '13/11/2026 14:15', note: 'Sinh viên hoàn tất ký điện tử và gửi đơn trực tuyến.' },
@@ -101,7 +226,7 @@ const INITIAL_ADMIN_REQUESTS = [
     typeCategory: 'Khảo thí & Điểm',
     studentName: 'Lê Thị Thu Thảo',
     studentCode: '23D10421',
-    cohort: ACTIVE_COHORTS[2], // K25
+    cohort: ACTIVE_COHORTS[2],
     faculty: 'Khoa Công nghệ thông tin',
     major: 'Công nghệ thông tin',
     className: `CD-CNTT-${ACTIVE_COHORTS[2]}B`,
@@ -122,7 +247,7 @@ const INITIAL_ADMIN_REQUESTS = [
     typeCategory: 'Học phí & Tài chính',
     studentName: 'Hoàng Quốc Bảo',
     studentCode: '24D10119',
-    cohort: ACTIVE_COHORTS[2], // K25
+    cohort: ACTIVE_COHORTS[2],
     faculty: 'Khoa Kinh tế - Quản trị',
     major: 'Quản trị kinh doanh',
     className: `CD-QTKD-${ACTIVE_COHORTS[2]}A`,
@@ -153,7 +278,7 @@ const INITIAL_ADMIN_REQUESTS = [
     typeCategory: 'Học vụ & Đào tạo',
     studentName: 'Đặng Tuấn Anh',
     studentCode: '22D10058',
-    cohort: ACTIVE_COHORTS[1], // K24
+    cohort: ACTIVE_COHORTS[1],
     faculty: 'Khoa Thiết kế mỹ thuật',
     major: 'Thiết kế đồ họa',
     className: `CD-TKDH-${ACTIVE_COHORTS[1]}A`,
@@ -184,7 +309,7 @@ const INITIAL_ADMIN_REQUESTS = [
     typeCategory: 'Đời sống sinh viên',
     studentName: 'Nguyễn Bích Ngọc',
     studentCode: '25D10312',
-    cohort: ACTIVE_COHORTS[3], // K26
+    cohort: ACTIVE_COHORTS[3],
     faculty: 'Khoa Ngoại ngữ',
     major: 'Tiếng Anh',
     className: `CD-TA-${ACTIVE_COHORTS[3]}A`,
@@ -215,7 +340,7 @@ const INITIAL_ADMIN_REQUESTS = [
     typeCategory: 'Học vụ & Đào tạo',
     studentName: 'Phạm Đức Huy',
     studentCode: '21D10992',
-    cohort: ACTIVE_COHORTS[0], // K23
+    cohort: ACTIVE_COHORTS[0],
     faculty: 'Khoa Công nghệ thông tin',
     major: 'Công nghệ thông tin',
     className: `CD-CNTT-${ACTIVE_COHORTS[0]}A`,
@@ -247,7 +372,7 @@ const INITIAL_ADMIN_REQUESTS = [
     typeCategory: 'Khảo thí & Điểm',
     studentName: 'Bùi Tuấn Kiệt',
     studentCode: '23D10499',
-    cohort: ACTIVE_COHORTS[3], // K26
+    cohort: ACTIVE_COHORTS[3],
     faculty: 'Khoa Thiết kế mỹ thuật',
     major: 'Thiết kế đồ họa',
     className: `CD-TKDH-${ACTIVE_COHORTS[3]}A`,
@@ -311,11 +436,12 @@ const STATUS_FILTER_OPTIONS = [
   { value: 'overdue', label: 'Quá hạn' },
 ];
 
+// Danh mục menu bên trái: Thay 'signature' bằng 'request-types'
 const NAV_ITEMS = [
   { id: 'overview', label: 'Tổng quan', icon: Home },
   { id: 'pending-dispatch', label: 'Đơn cần xử lý', icon: ClipboardList },
+  { id: 'request-types', label: 'Các loại đơn đang có', icon: Layers },
   { id: 'history', label: 'Lịch sử xử lý', icon: History },
-  { id: 'signature', label: 'Chữ ký cá nhân', icon: PenTool },
   { id: 'profile', label: 'Thông tin cá nhân', icon: User },
 ];
 
@@ -418,12 +544,37 @@ export default function AdminDashboardPage({ user, logoSrc = DEFAULT_LOGO_SRC, o
   const [requestsList, setRequestsList] = useState(INITIAL_ADMIN_REQUESTS);
   const [actionSuccessMsg, setActionSuccessMsg] = useState('');
 
+  // Quản lý danh mục các loại đơn đang có trong hệ thống
+  const [requestTypes, setRequestTypes] = useState(INITIAL_REQUEST_TYPES);
+  const [typeSearchTerm, setTypeSearchTerm] = useState('');
+  const [selectedTypeCategory, setSelectedTypeCategory] = useState('all');
+
+  // Modal thêm loại đơn mới bằng Chụp ảnh / Tải file
+  const [isAddTypeModalOpen, setIsAddTypeModalOpen] = useState(false);
+  const [newTypeName, setNewTypeName] = useState('');
+  const [newTypeCode, setNewTypeCode] = useState('');
+  const [newTypeCategory, setNewTypeCategory] = useState('Học vụ & Đào tạo');
+  const [newTypeDepartment, setNewTypeDepartment] = useState('Phòng Đào tạo & Quản lý Khoa học');
+  const [newTypeSla, setNewTypeSla] = useState('3');
+  const [newTypeDescription, setNewTypeDescription] = useState('');
+  const [uploadedFile, setUploadedFile] = useState(null); // { name, size, type, previewUrl, isImage }
+  const [isCameraActive, setIsCameraActive] = useState(false);
+
+  // Xem chi tiết mẫu đơn đã có
+  const [viewingTemplate, setViewingTemplate] = useState(null);
+
+  // Refs cho camera và file upload
+  const fileInputRef = useRef(null);
+  const cameraInputRef = useRef(null);
+  const videoRef = useRef(null);
+  const streamRef = useRef(null);
+
   // Modal xem chi tiết và Phân phát
   const [selectedRequest, setSelectedRequest] = useState(null);
   const [isDispatchModalOpen, setIsDispatchModalOpen] = useState(false);
 
   // Form phân phối đơn
-  const [dispatchType, setDispatchType] = useState('lecturer'); // lecturer | department
+  const [dispatchType, setDispatchType] = useState('lecturer');
   const [targetId, setTargetId] = useState('');
   const [dispatchDeadline, setDispatchDeadline] = useState('3');
   const [dispatchNote, setDispatchNote] = useState('');
@@ -448,7 +599,6 @@ export default function AdminDashboardPage({ user, logoSrc = DEFAULT_LOGO_SRC, o
   // Lọc danh sách theo các tiêu chí
   const filteredRequests = useMemo(() => {
     return requestsList.filter((req) => {
-      // 1. Tìm kiếm theo từ khóa
       if (searchTerm.trim()) {
         const query = searchTerm.trim().toLowerCase();
         const matchKeyword =
@@ -460,39 +610,15 @@ export default function AdminDashboardPage({ user, logoSrc = DEFAULT_LOGO_SRC, o
         if (!matchKeyword) return false;
       }
 
-      // 2. Khóa học
-      if (selectedCohort !== 'Tất cả' && req.cohort !== selectedCohort) {
-        return false;
-      }
+      if (selectedCohort !== 'Tất cả' && req.cohort !== selectedCohort) return false;
+      if (selectedFaculty !== 'Tất cả' && req.faculty !== selectedFaculty) return false;
+      if (selectedMajor !== 'Tất cả' && req.major !== selectedMajor) return false;
+      if (selectedClass !== 'Tất cả' && req.className !== selectedClass) return false;
 
-      // 3. Khoa
-      if (selectedFaculty !== 'Tất cả' && req.faculty !== selectedFaculty) {
-        return false;
-      }
-
-      // 4. Ngành học
-      if (selectedMajor !== 'Tất cả' && req.major !== selectedMajor) {
-        return false;
-      }
-
-      // 5. Lớp học
-      if (selectedClass !== 'Tất cả' && req.className !== selectedClass) {
-        return false;
-      }
-
-      // 6. Trạng thái
-      if (selectedStatus === 'pending' && req.status !== 'pending') {
-        return false;
-      }
-      if (selectedStatus === 'in_progress' && req.status !== 'in_progress') {
-        return false;
-      }
-      if (selectedStatus === 'completed' && req.status !== 'completed') {
-        return false;
-      }
-      if (selectedStatus === 'overdue' && req.status !== 'overdue') {
-        return false;
-      }
+      if (selectedStatus === 'pending' && req.status !== 'pending') return false;
+      if (selectedStatus === 'in_progress' && req.status !== 'in_progress') return false;
+      if (selectedStatus === 'completed' && req.status !== 'completed') return false;
+      if (selectedStatus === 'overdue' && req.status !== 'overdue') return false;
 
       return true;
     });
@@ -506,13 +632,24 @@ export default function AdminDashboardPage({ user, logoSrc = DEFAULT_LOGO_SRC, o
     selectedStatus,
   ]);
 
-  const hasActiveFilter =
-    searchTerm.trim() !== '' ||
-    selectedCohort !== 'Tất cả' ||
-    selectedFaculty !== 'Tất cả' ||
-    selectedMajor !== 'Tất cả' ||
-    selectedClass !== 'Tất cả' ||
-    selectedStatus !== 'all';
+  // Lọc danh mục loại đơn đang có
+  const filteredRequestTypes = useMemo(() => {
+    return requestTypes.filter((type) => {
+      if (typeSearchTerm.trim()) {
+        const q = typeSearchTerm.trim().toLowerCase();
+        const match =
+          type.name.toLowerCase().includes(q) ||
+          type.code.toLowerCase().includes(q) ||
+          type.description.toLowerCase().includes(q) ||
+          type.departmentName.toLowerCase().includes(q);
+        if (!match) return false;
+      }
+      if (selectedTypeCategory !== 'all' && type.category !== selectedTypeCategory) {
+        return false;
+      }
+      return true;
+    });
+  }, [requestTypes, typeSearchTerm, selectedTypeCategory]);
 
   const handleResetFilters = () => {
     setSearchTerm('');
@@ -526,6 +663,137 @@ export default function AdminDashboardPage({ user, logoSrc = DEFAULT_LOGO_SRC, o
   const handleSelectNav = (tabId) => {
     setActiveTab(tabId);
     setMobileMenuOpen(false);
+  };
+
+  // Tự sinh mã loại đơn từ tên tiếng Việt
+  const handleNameChange = (name) => {
+    setNewTypeName(name);
+    // Tự sinh mã gợi ý (ví dụ: "Đơn xin rút học phần" -> "RUT_HOC_PHAN")
+    const cleanStr = name
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/đ/g, 'd')
+      .replace(/Đ/g, 'D')
+      .replace(/^don xin /i, '')
+      .replace(/^don /i, '')
+      .trim()
+      .toUpperCase()
+      .replace(/[^A-Z0-9]+/g, '_');
+    if (cleanStr && cleanStr !== '_') {
+      setNewTypeCode(cleanStr);
+    }
+  };
+
+  // Xử lý khi chọn file tải lên (ảnh hoặc PDF)
+  const handleFileSelected = (file) => {
+    if (!file) return;
+    const isImg = file.type.startsWith('image/');
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      setUploadedFile({
+        name: file.name,
+        size: `${Math.round(file.size / 1024)} KB`,
+        type: file.type,
+        previewUrl: e.target.result,
+        isImage: isImg,
+      });
+      // Nếu chưa có tên đơn, gợi ý theo tên file
+      if (!newTypeName.trim()) {
+        const rawName = file.name.replace(/\.[^/.]+$/, '').replace(/[-_]/g, ' ');
+        handleNameChange(rawName.charAt(0).toUpperCase() + rawName.slice(1));
+      }
+    };
+    reader.readAsDataURL(file);
+  };
+
+  // Bật camera để chụp ảnh mẫu đơn trực tiếp
+  const startCamera = async () => {
+    try {
+      setIsCameraActive(true);
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: 'environment', width: { ideal: 1280 }, height: { ideal: 720 } },
+      });
+      streamRef.current = stream;
+      if (videoRef.current) {
+        videoRef.current.srcObject = stream;
+        videoRef.current.play();
+      }
+    } catch (err) {
+      alert('Không thể truy cập camera. Vui lòng cho phép quyền camera trên trình duyệt hoặc sử dụng nút "Tải file lên" từ máy tính.');
+      setIsCameraActive(false);
+    }
+  };
+
+  // Chụp ảnh từ camera video feed
+  const capturePhoto = () => {
+    if (!videoRef.current) return;
+    const canvas = document.createElement('canvas');
+    canvas.width = videoRef.current.videoWidth || 1280;
+    canvas.height = videoRef.current.videoHeight || 720;
+    const ctx = canvas.getContext('2d');
+    ctx.drawImage(videoRef.current, 0, 0, canvas.width, canvas.height);
+    const dataUrl = canvas.toDataURL('image/jpeg', 0.9);
+
+    stopCamera();
+    setUploadedFile({
+      name: `Mau_Don_Chup_${new Date().getTime().toString().slice(-6)}.jpg`,
+      size: `${Math.round((dataUrl.length * 0.75) / 1024)} KB`,
+      type: 'image/jpeg',
+      previewUrl: dataUrl,
+      isImage: true,
+    });
+  };
+
+  // Tắt camera
+  const stopCamera = () => {
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach((track) => track.stop());
+      streamRef.current = null;
+    }
+    setIsCameraActive(false);
+  };
+
+  // Xử lý lưu loại đơn mới
+  const handleSaveNewRequestType = (e) => {
+    e.preventDefault();
+    if (!newTypeName.trim()) return;
+
+    const newTypeItem = {
+      id: `rt-${Date.now()}`,
+      code: newTypeCode.trim() || `DON_${Date.now().toString().slice(-4)}`,
+      name: newTypeName.trim(),
+      category: newTypeCategory,
+      departmentName: newTypeDepartment,
+      slaDays: parseInt(newTypeSla, 10) || 3,
+      description: newTypeDescription.trim() || 'Thủ tục được số hóa từ mẫu đơn mới do Quản lý tải lên.',
+      isActive: true,
+      hasTemplateFile: Boolean(uploadedFile),
+      templateFileName: uploadedFile ? uploadedFile.name : 'Chua_co_file_mau.pdf',
+      templateFileSize: uploadedFile ? uploadedFile.size : '—',
+      templateFileUrl: uploadedFile ? uploadedFile.previewUrl : null,
+      isImage: uploadedFile ? uploadedFile.isImage : false,
+      createdAt: new Date().toLocaleDateString('vi-VN'),
+    };
+
+    setRequestTypes([newTypeItem, ...requestTypes]);
+    setIsAddTypeModalOpen(false);
+    stopCamera();
+
+    // Reset form
+    setNewTypeName('');
+    setNewTypeCode('');
+    setNewTypeDescription('');
+    setUploadedFile(null);
+
+    setActionSuccessMsg(`Đã tạo và số hóa thành công loại đơn mới: "${newTypeItem.name}"!`);
+    setTimeout(() => setActionSuccessMsg(''), 4500);
+  };
+
+  // Bật/tắt trạng thái loại đơn
+  const handleToggleTypeStatus = (typeId) => {
+    setRequestTypes((prev) =>
+      prev.map((t) => (t.id === typeId ? { ...t, isActive: !t.isActive } : t))
+    );
   };
 
   // Mở modal phân phát đơn
@@ -677,11 +945,10 @@ export default function AdminDashboardPage({ user, logoSrc = DEFAULT_LOGO_SRC, o
     setTimeout(() => setActionSuccessMsg(''), 4500);
   };
 
-  // Render Sidebar trái đồng bộ
+  // Render Sidebar trái: Đã thay Chữ ký cá nhân bằng "Các loại đơn đang có"
   const renderSidebarContent = () => (
     <div className="flex h-full flex-col justify-between p-4">
       <div>
-        {/* Logo trường & Tiêu đề Admin Portal */}
         <div className="flex items-center gap-3 px-2 pt-1 pb-6">
           <img
             src={logoSrc}
@@ -694,7 +961,6 @@ export default function AdminDashboardPage({ user, logoSrc = DEFAULT_LOGO_SRC, o
           </div>
         </div>
 
-        {/* Navigation */}
         <nav className="space-y-1.5" aria-label="Menu quản lý">
           {NAV_ITEMS.map((item) => {
             const Icon = item.icon;
@@ -724,13 +990,21 @@ export default function AdminDashboardPage({ user, logoSrc = DEFAULT_LOGO_SRC, o
                     {stats.pendingCount}
                   </span>
                 )}
+                {item.id === 'request-types' && (
+                  <span
+                    className={`rounded-full px-2 py-0.5 text-xs font-bold ${
+                      isActive ? 'bg-white text-[#2563EB]' : 'bg-slate-100 text-slate-600'
+                    }`}
+                  >
+                    {requestTypes.length}
+                  </span>
+                )}
               </button>
             );
           })}
         </nav>
       </div>
 
-      {/* Nút Đăng xuất */}
       <button
         type="button"
         onClick={onLogout}
@@ -744,12 +1018,12 @@ export default function AdminDashboardPage({ user, logoSrc = DEFAULT_LOGO_SRC, o
 
   return (
     <div className="flex min-h-screen bg-[#F4F7FE] text-slate-800">
-      {/* Sidebar cho Desktop */}
+      {/* Sidebar Desktop */}
       <aside className="hidden w-64 shrink-0 border-r border-slate-200/70 bg-gradient-to-b from-[#F8FAFF] to-[#EEF4FF] lg:block">
         <div className="sticky top-0 h-screen">{renderSidebarContent()}</div>
       </aside>
 
-      {/* Sidebar ngăn kéo cho Mobile */}
+      {/* Sidebar Mobile */}
       {mobileMenuOpen && (
         <div className="fixed inset-0 z-40 flex lg:hidden">
           <div
@@ -784,14 +1058,23 @@ export default function AdminDashboardPage({ user, logoSrc = DEFAULT_LOGO_SRC, o
               <Menu className="h-5 w-5" />
             </button>
 
-            {/* Thanh tìm kiếm nhỏ gọn trên Header */}
             <div className="relative w-full max-w-sm">
               <Search className="pointer-events-none absolute top-1/2 left-3.5 h-4 w-4 -translate-y-1/2 text-slate-400" />
               <input
                 type="text"
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                placeholder="Tìm kiếm mã đơn, sinh viên, lớp..."
+                value={activeTab === 'request-types' ? typeSearchTerm : searchTerm}
+                onChange={(e) => {
+                  if (activeTab === 'request-types') {
+                    setTypeSearchTerm(e.target.value);
+                  } else {
+                    setSearchTerm(e.target.value);
+                  }
+                }}
+                placeholder={
+                  activeTab === 'request-types'
+                    ? 'Tìm kiếm loại đơn, mã thủ tục...'
+                    : 'Tìm kiếm mã đơn, sinh viên, lớp...'
+                }
                 className="w-full rounded-xl border border-slate-200/80 bg-[#F4F7FE] py-2 pr-4 pl-10 text-sm text-slate-700 placeholder-slate-400 transition-all focus:border-[#2563EB] focus:bg-white focus:ring-4 focus:ring-blue-500/10 focus:outline-none"
               />
             </div>
@@ -807,7 +1090,6 @@ export default function AdminDashboardPage({ user, logoSrc = DEFAULT_LOGO_SRC, o
               <span className="absolute top-1.5 right-2 h-2 w-2 rounded-full bg-red-500 ring-2 ring-white" />
             </button>
 
-            {/* Thông tin Cán bộ Quản lý */}
             <div className="flex items-center gap-2.5">
               <div className="flex h-9 w-9 items-center justify-center rounded-full bg-[#2563EB] text-xs font-bold text-white shadow-xs">
                 {adminInitial}
@@ -833,9 +1115,9 @@ export default function AdminDashboardPage({ user, logoSrc = DEFAULT_LOGO_SRC, o
 
         {/* Main Content */}
         <main className="mx-auto w-full max-w-6xl flex-1 p-4 sm:p-8">
+          {/* TAB 1: TỔNG QUAN */}
           {activeTab === 'overview' && (
             <div className="space-y-6">
-              {/* Banner chào mừng Quản lý (Đồng bộ với giáo viên) */}
               <section className="flex flex-col justify-between gap-6 rounded-3xl bg-gradient-to-r from-[#F6F9FF] via-[#EFF4FF] to-[#E9F0FF] p-6 ring-1 ring-blue-100/70 md:flex-row md:items-center md:px-8 md:py-6">
                 <div>
                   <h1 className="text-2xl font-bold tracking-tight text-slate-800 sm:text-[28px]">
@@ -845,13 +1127,12 @@ export default function AdminDashboardPage({ user, logoSrc = DEFAULT_LOGO_SRC, o
                     Trung tâm tiếp nhận & phân phối hồ sơ sinh viên Một Cửa. Chúc bạn làm việc hiệu quả!
                   </p>
                 </div>
-
                 <div className="hidden md:block">
                   <AdminIllustration />
                 </div>
               </section>
 
-              {/* 3 Thẻ thống kê: Đơn chờ tiếp nhận - Đã xử lý - Đơn quá hạn */}
+              {/* 3 Thẻ thống kê */}
               <section className="grid grid-cols-1 gap-4 sm:grid-cols-3">
                 <button
                   type="button"
@@ -905,7 +1186,7 @@ export default function AdminDashboardPage({ user, logoSrc = DEFAULT_LOGO_SRC, o
                 </button>
               </section>
 
-              {/* Bảng Đơn cần tiếp nhận & phân phối + Bộ lọc chi tiết */}
+              {/* Bảng Đơn cần tiếp nhận & phân phối */}
               <section className="rounded-2xl border border-slate-200/70 bg-white p-5 shadow-xs sm:p-6">
                 <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                   <div className="flex items-center gap-2.5">
@@ -925,28 +1206,22 @@ export default function AdminDashboardPage({ user, logoSrc = DEFAULT_LOGO_SRC, o
                   </button>
                 </div>
 
-                {/* 5 Bộ lọc thả xuống đồng bộ */}
+                {/* 5 Bộ lọc thả xuống */}
                 <div className="mb-5 rounded-xl border border-slate-200/70 bg-slate-50/50 p-4">
                   <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5">
-                    {/* 1. Lọc Khóa học */}
                     <div>
-                      <label className="block text-[11px] font-medium text-slate-500 mb-1">
-                        Khóa học
-                      </label>
+                      <label className="block text-[11px] font-medium text-slate-500 mb-1">Khóa học</label>
                       <select
                         value={selectedCohort}
                         onChange={(e) => setSelectedCohort(e.target.value)}
                         className="w-full rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs text-slate-700 focus:border-[#2563EB] focus:outline-none"
                       >
                         {COHORT_OPTIONS.map((c) => (
-                          <option key={c} value={c}>
-                            {c}
-                          </option>
+                          <option key={c} value={c}>{c}</option>
                         ))}
                       </select>
                     </div>
 
-                    {/* 2. Lọc Khoa */}
                     <div>
                       <label className="block text-[11px] font-medium text-slate-500 mb-1">Khoa</label>
                       <select
@@ -955,70 +1230,53 @@ export default function AdminDashboardPage({ user, logoSrc = DEFAULT_LOGO_SRC, o
                         className="w-full rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs text-slate-700 focus:border-[#2563EB] focus:outline-none"
                       >
                         {FACULTY_OPTIONS.map((f) => (
-                          <option key={f} value={f}>
-                            {f}
-                          </option>
+                          <option key={f} value={f}>{f}</option>
                         ))}
                       </select>
                     </div>
 
-                    {/* 3. Lọc Ngành học */}
                     <div>
-                      <label className="block text-[11px] font-medium text-slate-500 mb-1">
-                        Ngành học
-                      </label>
+                      <label className="block text-[11px] font-medium text-slate-500 mb-1">Ngành học</label>
                       <select
                         value={selectedMajor}
                         onChange={(e) => setSelectedMajor(e.target.value)}
                         className="w-full rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs text-slate-700 focus:border-[#2563EB] focus:outline-none"
                       >
                         {MAJOR_OPTIONS.map((m) => (
-                          <option key={m} value={m}>
-                            {m}
-                          </option>
+                          <option key={m} value={m}>{m}</option>
                         ))}
                       </select>
                     </div>
 
-                    {/* 4. Lọc Lớp học */}
                     <div>
-                      <label className="block text-[11px] font-medium text-slate-500 mb-1">
-                        Lớp học
-                      </label>
+                      <label className="block text-[11px] font-medium text-slate-500 mb-1">Lớp học</label>
                       <select
                         value={selectedClass}
                         onChange={(e) => setSelectedClass(e.target.value)}
                         className="w-full rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs text-slate-700 focus:border-[#2563EB] focus:outline-none"
                       >
                         {CLASS_OPTIONS.map((cl) => (
-                          <option key={cl} value={cl}>
-                            {cl}
-                          </option>
+                          <option key={cl} value={cl}>{cl}</option>
                         ))}
                       </select>
                     </div>
 
-                    {/* 5. Lọc Trạng thái */}
                     <div>
-                      <label className="block text-[11px] font-medium text-slate-500 mb-1">
-                        Trạng thái đơn
-                      </label>
+                      <label className="block text-[11px] font-medium text-slate-500 mb-1">Trạng thái đơn</label>
                       <select
                         value={selectedStatus}
                         onChange={(e) => setSelectedStatus(e.target.value)}
                         className="w-full rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs text-slate-700 focus:border-[#2563EB] focus:outline-none"
                       >
                         {STATUS_FILTER_OPTIONS.map((st) => (
-                          <option key={st.value} value={st.value}>
-                            {st.label}
-                          </option>
+                          <option key={st.value} value={st.value}>{st.label}</option>
                         ))}
                       </select>
                     </div>
                   </div>
                 </div>
 
-                {/* BẢNG DANH SÁCH ĐƠN TỪ TIẾP NHẬN */}
+                {/* BẢNG DANH SÁCH ĐƠN */}
                 <div className="overflow-x-auto">
                   <table className="w-full min-w-[760px] text-left text-sm">
                     <thead>
@@ -1042,24 +1300,13 @@ export default function AdminDashboardPage({ user, logoSrc = DEFAULT_LOGO_SRC, o
                       ) : (
                         filteredRequests.map((req) => (
                           <tr key={req.id} className="transition-colors hover:bg-slate-50/70">
-                            <td className="py-3.5 pr-4 pl-2 font-semibold text-slate-700 whitespace-nowrap">
-                              {req.id}
-                            </td>
-                            <td className="px-4 py-3.5 text-slate-700 whitespace-nowrap">
-                              {req.typeName}
-                            </td>
+                            <td className="py-3.5 pr-4 pl-2 font-semibold text-slate-700 whitespace-nowrap">{req.id}</td>
+                            <td className="px-4 py-3.5 text-slate-700 whitespace-nowrap">{req.typeName}</td>
                             <td className="px-4 py-3.5 whitespace-nowrap">
-                              <p className="font-medium text-slate-800">
-                                {req.studentName}{' '}
-                                <span className="text-slate-400 font-normal">
-                                  ({req.studentCode})
-                                </span>
-                              </p>
+                              <p className="font-medium text-slate-800">{req.studentName} <span className="text-slate-400 font-normal">({req.studentCode})</span></p>
                               <p className="text-xs text-slate-400">{req.className}</p>
                             </td>
-                            <td className="px-4 py-3.5 whitespace-nowrap text-slate-500">
-                              {req.createdAt}
-                            </td>
+                            <td className="px-4 py-3.5 whitespace-nowrap text-slate-500">{req.createdAt}</td>
                             <td className="px-4 py-3.5 whitespace-nowrap">
                               {req.assignedTo ? (
                                 <div className="flex items-center gap-1.5 text-xs font-medium text-slate-700">
@@ -1072,8 +1319,7 @@ export default function AdminDashboardPage({ user, logoSrc = DEFAULT_LOGO_SRC, o
                                 </div>
                               ) : (
                                 <span className="inline-flex items-center gap-1 text-xs text-amber-600 font-medium">
-                                  <Clock className="h-3 w-3" />
-                                  Chờ phân phát
+                                  <Clock className="h-3 w-3" /> Chờ phân phát
                                 </span>
                               )}
                             </td>
@@ -1089,7 +1335,6 @@ export default function AdminDashboardPage({ user, logoSrc = DEFAULT_LOGO_SRC, o
                                 >
                                   Chi tiết
                                 </button>
-
                                 {req.status === 'pending' && (
                                   <button
                                     type="button"
@@ -1100,7 +1345,6 @@ export default function AdminDashboardPage({ user, logoSrc = DEFAULT_LOGO_SRC, o
                                     <span>Phân phát</span>
                                   </button>
                                 )}
-
                                 {req.status === 'in_progress' && (
                                   <button
                                     type="button"
@@ -1122,6 +1366,7 @@ export default function AdminDashboardPage({ user, logoSrc = DEFAULT_LOGO_SRC, o
             </div>
           )}
 
+          {/* TAB 2: ĐƠN CẦN XỬ LÝ */}
           {activeTab === 'pending-dispatch' && (
             <section className="rounded-2xl border border-slate-200/70 bg-white p-5 shadow-xs sm:p-6">
               <div className="mb-5 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
@@ -1133,7 +1378,6 @@ export default function AdminDashboardPage({ user, logoSrc = DEFAULT_LOGO_SRC, o
                 </div>
               </div>
 
-              {/* Bảng đơn pending */}
               <div className="overflow-x-auto">
                 <table className="w-full min-w-[700px] text-left text-sm">
                   <thead>
@@ -1154,9 +1398,7 @@ export default function AdminDashboardPage({ user, logoSrc = DEFAULT_LOGO_SRC, o
                           <td className="py-3.5 pr-4 pl-2 font-semibold text-slate-700 whitespace-nowrap">{req.id}</td>
                           <td className="px-4 py-3.5 text-slate-700 whitespace-nowrap">{req.typeName}</td>
                           <td className="px-4 py-3.5 whitespace-nowrap">
-                            <p className="font-medium text-slate-800">
-                              {req.studentName} <span className="text-slate-400 font-normal">({req.studentCode})</span>
-                            </p>
+                            <p className="font-medium text-slate-800">{req.studentName} <span className="text-slate-400 font-normal">({req.studentCode})</span></p>
                             <p className="text-xs text-slate-400">{req.className}</p>
                           </td>
                           <td className="px-4 py-3.5 whitespace-nowrap text-slate-500">{req.createdAt}</td>
@@ -1181,6 +1423,155 @@ export default function AdminDashboardPage({ user, logoSrc = DEFAULT_LOGO_SRC, o
             </section>
           )}
 
+          {/* TAB 3: CÁC LOẠI ĐƠN ĐANG CÓ (THAY CHO CHỮ KÝ CỦA TÔI) */}
+          {activeTab === 'request-types' && (
+            <div className="space-y-6">
+              {/* Header của tab */}
+              <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between rounded-2xl border border-slate-200/80 bg-white p-5 shadow-xs">
+                <div>
+                  <div className="flex items-center gap-2">
+                    <Layers className="h-6 w-6 text-[#2563EB]" />
+                    <h1 className="text-xl font-bold text-slate-800">Các loại đơn đang có</h1>
+                  </div>
+                  <p className="mt-1 text-sm text-slate-500">
+                    Danh mục tất cả các thủ tục giấy tờ đang áp dụng trên hệ thống ({requestTypes.length} loại đơn).
+                  </p>
+                </div>
+
+                {/* NÚT THÊM ĐƠN MỚI BẰNG CHỤP ẢNH / TẢI FILE */}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsAddTypeModalOpen(true);
+                    setUploadedFile(null);
+                    setNewTypeName('');
+                    setNewTypeCode('');
+                    setNewTypeDescription('');
+                  }}
+                  className="inline-flex cursor-pointer items-center justify-center gap-2 rounded-xl bg-[#2563EB] px-4 py-2.5 text-sm font-semibold text-white shadow-[0_6px_16px_-4px_rgba(37,99,235,0.5)] transition-all hover:bg-blue-700 active:scale-[0.99]"
+                >
+                  <Plus className="h-4 w-4" strokeWidth={2.5} />
+                  <span>Thêm đơn mới (Chụp / Tải file)</span>
+                </button>
+              </div>
+
+              {/* Bộ lọc loại đơn theo danh mục */}
+              <div className="flex flex-wrap items-center gap-2">
+                {[
+                  { id: 'all', label: 'Tất cả danh mục' },
+                  { id: 'Xác nhận học tập', label: 'Xác nhận học tập' },
+                  { id: 'Học vụ & Đào tạo', label: 'Học vụ & Đào tạo' },
+                  { id: 'Khảo thí & Điểm', label: 'Khảo thí & Điểm' },
+                  { id: 'Học phí & Tài chính', label: 'Học phí & Tài chính' },
+                  { id: 'Đời sống sinh viên', label: 'Đời sống sinh viên' },
+                ].map((cat) => (
+                  <button
+                    key={cat.id}
+                    type="button"
+                    onClick={() => setSelectedTypeCategory(cat.id)}
+                    className={`rounded-xl px-3.5 py-1.5 text-xs font-semibold transition-all ${
+                      selectedTypeCategory === cat.id
+                        ? 'bg-[#2563EB] text-white shadow-xs'
+                        : 'border border-slate-200 bg-white text-slate-600 hover:bg-slate-50'
+                    }`}
+                  >
+                    {cat.label}
+                  </button>
+                ))}
+              </div>
+
+              {/* Danh sách lưới các loại đơn */}
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                {filteredRequestTypes.map((type) => (
+                  <div
+                    key={type.id}
+                    className="flex flex-col justify-between rounded-2xl border border-slate-200/80 bg-white p-5 shadow-xs transition-all hover:border-blue-300 hover:shadow-md"
+                  >
+                    <div>
+                      {/* Top card: Mã đơn, Badge danh mục và Switch bật/tắt */}
+                      <div className="flex items-start justify-between gap-2 mb-3">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="rounded-lg bg-blue-50 px-2 py-1 text-[11px] font-bold text-[#2563EB] tracking-wider uppercase">
+                            {type.code}
+                          </span>
+                          <span className="rounded-lg bg-slate-100 px-2 py-1 text-[11px] font-medium text-slate-600">
+                            {type.category}
+                          </span>
+                        </div>
+
+                        <button
+                          type="button"
+                          onClick={() => handleToggleTypeStatus(type.id)}
+                          className="cursor-pointer text-xs font-medium flex items-center gap-1"
+                          title={type.isActive ? 'Đang mở (Bấm để tạm dừng)' : 'Đang đóng (Bấm để mở lại)'}
+                        >
+                          {type.isActive ? (
+                            <span className="inline-flex items-center gap-1 text-emerald-600 font-semibold text-xs">
+                              <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
+                              Đang mở
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center gap-1 text-slate-400 font-medium text-xs">
+                              <span className="h-2 w-2 rounded-full bg-slate-400" />
+                              Tạm ngưng
+                            </span>
+                          )}
+                        </button>
+                      </div>
+
+                      {/* Tên loại đơn */}
+                      <h3 className="text-base font-bold text-slate-800 leading-snug">
+                        {type.name}
+                      </h3>
+
+                      {/* Mô tả */}
+                      <p className="mt-2 text-xs text-slate-500 line-clamp-2 leading-relaxed">
+                        {type.description}
+                      </p>
+                    </div>
+
+                    {/* Thông tin phòng ban & File mẫu đính kèm */}
+                    <div className="mt-4 pt-3 border-t border-slate-100">
+                      <div className="flex items-center justify-between text-xs text-slate-600 mb-3">
+                        <div className="flex items-center gap-1.5 truncate max-w-[220px]">
+                          <Building2 className="h-3.5 w-3.5 text-slate-400 shrink-0" />
+                          <span className="truncate">{type.departmentName}</span>
+                        </div>
+                        <div className="flex items-center gap-1 text-slate-500 shrink-0">
+                          <Clock className="h-3 w-3" />
+                          <span>SLA: {type.slaDays} ngày</span>
+                        </div>
+                      </div>
+
+                      {/* File mẫu đính kèm */}
+                      <div className="flex items-center justify-between rounded-xl bg-slate-50/80 p-2.5 border border-slate-100 text-xs">
+                        <div className="flex items-center gap-2 truncate pr-2">
+                          <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-blue-100 text-[#2563EB] shrink-0">
+                            {type.isImage ? <ImageIcon className="h-4 w-4" /> : <FileText className="h-4 w-4" />}
+                          </div>
+                          <div className="truncate text-left leading-tight">
+                            <p className="font-semibold text-slate-700 truncate">{type.templateFileName}</p>
+                            <p className="text-[10px] text-slate-400">{type.templateFileSize}</p>
+                          </div>
+                        </div>
+
+                        <button
+                          type="button"
+                          onClick={() => setViewingTemplate(type)}
+                          className="flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-xs font-semibold text-[#2563EB] hover:bg-blue-50 transition-colors shrink-0"
+                        >
+                          <Eye className="h-3.5 w-3.5" />
+                          <span>Xem mẫu</span>
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* TAB 4: LỊCH SỬ XỬ LÝ */}
           {activeTab === 'history' && (
             <section className="rounded-2xl border border-slate-200/70 bg-white p-5 shadow-xs sm:p-6">
               <h1 className="text-xl font-bold text-slate-800 mb-2">Lịch sử điều phối toàn bộ hồ sơ</h1>
@@ -1228,15 +1619,7 @@ export default function AdminDashboardPage({ user, logoSrc = DEFAULT_LOGO_SRC, o
             </section>
           )}
 
-          {activeTab === 'signature' && (
-            <div className="rounded-2xl border border-slate-200/70 bg-white p-5 shadow-xs sm:p-6">
-              <SignatureManager
-                userName={adminName}
-                userRoleLabel="Cán bộ Quản lý Một cửa"
-              />
-            </div>
-          )}
-
+          {/* TAB 5: THÔNG TIN CÁ NHÂN */}
           {activeTab === 'profile' && (
             <div className="rounded-2xl border border-slate-200/70 bg-white p-6 shadow-xs">
               <h2 className="text-lg font-bold text-slate-800 mb-4">Thông tin tài khoản Quản lý</h2>
@@ -1263,7 +1646,340 @@ export default function AdminDashboardPage({ user, logoSrc = DEFAULT_LOGO_SRC, o
         </main>
       </div>
 
-      {/* MODAL 1: PHÂN PHÁT ĐƠN CHO GV HOẶC PHÒNG BAN */}
+      {/* MODAL: THÊM LOẠI ĐƠN MỚI (CHỤP ẢNH TỪ CAMERA HOẶC TẢI FILE LÊN) */}
+      {isAddTypeModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/45 p-4 backdrop-blur-[2px]">
+          <div className="w-full max-w-xl rounded-2xl bg-white shadow-2xl overflow-hidden flex flex-col max-h-[92vh]">
+            {/* Header Modal */}
+            <div className="flex items-center justify-between border-b border-slate-100 px-6 py-4">
+              <div>
+                <h3 className="font-bold text-slate-800 text-base">Thêm loại đơn mới vào hệ thống</h3>
+                <p className="text-xs text-slate-500">Chụp ảnh hoặc tải file mẫu đơn giấy lên để tự động số hóa</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  stopCamera();
+                  setIsAddTypeModalOpen(false);
+                }}
+                className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-600"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            {/* Body Form */}
+            <form onSubmit={handleSaveNewRequestType} className="flex-1 overflow-y-auto p-6 space-y-4 text-sm">
+              {/* VÙNG CHỤP ẢNH HOẶC TẢI FILE MẪU ĐƠN */}
+              <div>
+                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-2">
+                  1. Chụp ảnh hoặc tải file mẫu đơn lên:
+                </label>
+
+                {/* Nếu Camera đang bật */}
+                {isCameraActive ? (
+                  <div className="relative rounded-2xl overflow-hidden bg-black aspect-video flex items-center justify-center border-2 border-[#2563EB]">
+                    <video ref={videoRef} autoPlay playsInline className="w-full h-full object-cover" />
+                    <div className="absolute bottom-3 flex items-center gap-3">
+                      <button
+                        type="button"
+                        onClick={capturePhoto}
+                        className="rounded-full bg-white px-5 py-2 text-xs font-bold text-[#2563EB] shadow-lg hover:bg-blue-50 transition-all flex items-center gap-1.5"
+                      >
+                        <Camera className="h-4 w-4" />
+                        <span>Chụp ngay</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={stopCamera}
+                        className="rounded-full bg-black/60 backdrop-blur-sm px-4 py-2 text-xs font-medium text-white hover:bg-black/80"
+                      >
+                        Hủy
+                      </button>
+                    </div>
+                  </div>
+                ) : uploadedFile ? (
+                  /* Đã có file tải lên / vừa chụp xong */
+                  <div className="rounded-2xl border border-blue-200 bg-blue-50/40 p-4">
+                    <div className="flex items-center justify-between mb-3">
+                      <div className="flex items-center gap-2 text-xs font-bold text-[#2563EB]">
+                        <CheckCircle2 className="h-4 w-4" />
+                        <span>Đã tải file mẫu thành công</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => setUploadedFile(null)}
+                          className="text-xs text-red-600 hover:underline font-medium"
+                        >
+                          Xóa / Chọn lại
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="flex items-start gap-3">
+                      {uploadedFile.isImage ? (
+                        <div className="h-24 w-20 shrink-0 rounded-lg overflow-hidden border border-slate-200 bg-white">
+                          <img
+                            src={uploadedFile.previewUrl}
+                            alt="Bản xem trước mẫu đơn"
+                            className="h-full w-full object-cover"
+                          />
+                        </div>
+                      ) : (
+                        <div className="flex h-20 w-16 shrink-0 items-center justify-center rounded-lg bg-red-100 text-red-600 font-bold text-xs">
+                          PDF
+                        </div>
+                      )}
+
+                      <div className="min-w-0 text-xs text-slate-600 space-y-1">
+                        <p className="font-bold text-slate-800 text-sm truncate">{uploadedFile.name}</p>
+                        <p>Dung lượng: {uploadedFile.size}</p>
+                        <p className="text-emerald-700 font-medium flex items-center gap-1">
+                          <Sparkles className="h-3.5 w-3.5" /> File sẽ được lưu trữ tự động trên hệ thống
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  /* Hộp Dropzone để chọn file hoặc chụp ảnh */
+                  <div className="rounded-2xl border-2 border-dashed border-slate-300 bg-slate-50/70 p-6 text-center hover:border-[#2563EB] transition-colors">
+                    <input
+                      type="file"
+                      ref={fileInputRef}
+                      accept="image/*,.pdf"
+                      onChange={(e) => handleFileSelected(e.target.files?.[0])}
+                      className="hidden"
+                    />
+                    <input
+                      type="file"
+                      ref={cameraInputRef}
+                      accept="image/*"
+                      capture="environment"
+                      onChange={(e) => handleFileSelected(e.target.files?.[0])}
+                      className="hidden"
+                    />
+
+                    <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-blue-50 text-[#2563EB] mb-3">
+                      <FileUp className="h-6 w-6" />
+                    </div>
+
+                    <p className="text-xs sm:text-sm font-semibold text-slate-800">
+                      Tải file mẫu đơn (PDF / Ảnh chụp) hoặc Chụp trực tiếp
+                    </p>
+                    <p className="mt-1 text-xs text-slate-400">
+                      Hệ thống tự động chuyển đổi file gửi lên thành mẫu đơn điện tử
+                    </p>
+
+                    <div className="mt-4 flex flex-wrap items-center justify-center gap-2.5">
+                      <button
+                        type="button"
+                        onClick={() => fileInputRef.current?.click()}
+                        className="flex cursor-pointer items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3.5 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 shadow-2xs"
+                      >
+                        <Upload className="h-3.5 w-3.5 text-[#2563EB]" />
+                        <span>Chọn file từ máy tính</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={startCamera}
+                        className="flex cursor-pointer items-center gap-1.5 rounded-xl bg-[#2563EB] px-3.5 py-2 text-xs font-semibold text-white hover:bg-blue-700 shadow-2xs"
+                      >
+                        <Camera className="h-3.5 w-3.5" />
+                        <span>Chụp ảnh từ Camera</span>
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* THÔNG TIN LOẠI ĐƠN */}
+              <div className="space-y-3 pt-2 border-t border-slate-100">
+                <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider">
+                  2. Thông tin mô tả loại đơn:
+                </label>
+
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">
+                    Tên loại đơn / thủ tục: <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    value={newTypeName}
+                    onChange={(e) => handleNameChange(e.target.value)}
+                    placeholder="Ví dụ: Đơn xin chuyển ngành, Đơn đăng ký học vượt, Đơn cấp lại thẻ SV..."
+                    className="w-full rounded-xl border border-slate-300 p-2.5 text-xs text-slate-800 focus:border-[#2563EB] focus:outline-none"
+                    required
+                  />
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-700 mb-1">
+                      Mã thủ tục (Gợi ý):
+                    </label>
+                    <input
+                      type="text"
+                      value={newTypeCode}
+                      onChange={(e) => setNewTypeCode(e.target.value.toUpperCase())}
+                      placeholder="VD: CHUYEN_NGANH"
+                      className="w-full rounded-xl border border-slate-300 p-2.5 text-xs font-semibold text-[#2563EB] focus:border-[#2563EB] focus:outline-none"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-700 mb-1">
+                      Danh mục:
+                    </label>
+                    <select
+                      value={newTypeCategory}
+                      onChange={(e) => setNewTypeCategory(e.target.value)}
+                      className="w-full rounded-xl border border-slate-300 bg-white p-2.5 text-xs text-slate-800 focus:border-[#2563EB] focus:outline-none"
+                    >
+                      <option value="Xác nhận học tập">Xác nhận học tập</option>
+                      <option value="Học vụ & Đào tạo">Học vụ & Đào tạo</option>
+                      <option value="Khảo thí & Điểm">Khảo thí & Điểm</option>
+                      <option value="Học phí & Tài chính">Học phí & Tài chính</option>
+                      <option value="Đời sống sinh viên">Đời sống sinh viên</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-700 mb-1">
+                      Đơn vị phụ trách xử lý:
+                    </label>
+                    <select
+                      value={newTypeDepartment}
+                      onChange={(e) => setNewTypeDepartment(e.target.value)}
+                      className="w-full rounded-xl border border-slate-300 bg-white p-2.5 text-xs text-slate-800 focus:border-[#2563EB] focus:outline-none"
+                    >
+                      {DEPARTMENTS.map((dept) => (
+                        <option key={dept.id} value={dept.name}>{dept.name}</option>
+                      ))}
+                      <option value="Giảng viên chủ nhiệm">Giảng viên chủ nhiệm</option>
+                    </select>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-700 mb-1">
+                      Thời hạn xử lý (SLA):
+                    </label>
+                    <select
+                      value={newTypeSla}
+                      onChange={(e) => setNewTypeSla(e.target.value)}
+                      className="w-full rounded-xl border border-slate-300 bg-white p-2.5 text-xs text-slate-800 focus:border-[#2563EB] focus:outline-none"
+                    >
+                      <option value="1">Trong 24 giờ (1 ngày)</option>
+                      <option value="2">2 ngày làm việc</option>
+                      <option value="3">3 ngày làm việc</option>
+                      <option value="5">5 ngày làm việc</option>
+                      <option value="7">7 ngày làm việc</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">
+                    Mô tả & Hướng dẫn sinh viên:
+                  </label>
+                  <textarea
+                    rows={2}
+                    value={newTypeDescription}
+                    onChange={(e) => setNewTypeDescription(e.target.value)}
+                    placeholder="Mô tả mục đích sử dụng đơn và các giấy tờ cần chuẩn bị..."
+                    className="w-full rounded-xl border border-slate-300 p-2.5 text-xs text-slate-800 focus:border-[#2563EB] focus:outline-none"
+                  />
+                </div>
+              </div>
+
+              {/* Nút hành động */}
+              <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => {
+                    stopCamera();
+                    setIsAddTypeModalOpen(false);
+                  }}
+                  className="rounded-xl border border-slate-200 px-4 py-2 text-xs font-medium text-slate-600 hover:bg-slate-50"
+                >
+                  Hủy
+                </button>
+                <button
+                  type="submit"
+                  className="flex items-center gap-1.5 rounded-xl bg-[#2563EB] px-5 py-2 text-xs font-semibold text-white hover:bg-blue-700 shadow-sm"
+                >
+                  <Plus className="h-4 w-4" />
+                  <span>Lưu & Thêm loại đơn này</span>
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL: XEM TRƯỚC MẪU ĐƠN */}
+      {viewingTemplate && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4 backdrop-blur-[2px]">
+          <div className="w-full max-w-xl rounded-2xl bg-white shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
+            <div className="flex items-center justify-between border-b border-slate-100 px-6 py-4">
+              <div>
+                <h3 className="font-bold text-slate-800">{viewingTemplate.name}</h3>
+                <p className="text-xs text-slate-500">Mã thủ tục: {viewingTemplate.code} • Đơn vị: {viewingTemplate.departmentName}</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setViewingTemplate(null)}
+                className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-600"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto p-6 space-y-4">
+              {viewingTemplate.templateFileUrl ? (
+                <div className="rounded-xl overflow-hidden border border-slate-200 bg-slate-100">
+                  <img
+                    src={viewingTemplate.templateFileUrl}
+                    alt={viewingTemplate.name}
+                    className="w-full h-auto object-contain max-h-[500px]"
+                  />
+                </div>
+              ) : (
+                <div className="rounded-2xl border-2 border-dashed border-slate-200 bg-slate-50 p-10 text-center space-y-3">
+                  <FileText className="mx-auto h-12 w-12 text-[#2563EB]" />
+                  <div className="font-bold text-slate-800 text-sm">{viewingTemplate.templateFileName}</div>
+                  <p className="text-xs text-slate-500 max-w-sm mx-auto">
+                    Biểu mẫu chuẩn văn bản hành chính của Trường Cao đẳng Việt Mỹ Hà Nội.
+                  </p>
+                  <span className="inline-block rounded-full bg-emerald-100 px-3 py-1 text-xs font-semibold text-emerald-800">
+                    Sẵn sàng tiếp nhận trực tuyến
+                  </span>
+                </div>
+              )}
+
+              <div className="rounded-xl border border-slate-100 bg-slate-50 p-3.5 text-xs text-slate-600 space-y-1">
+                <div><strong>Mô tả:</strong> {viewingTemplate.description}</div>
+                <div><strong>Thời hạn xử lý (SLA):</strong> {viewingTemplate.slaDays} ngày làm việc</div>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end border-t border-slate-100 px-6 py-3">
+              <button
+                type="button"
+                onClick={() => setViewingTemplate(null)}
+                className="rounded-xl border border-slate-200 px-4 py-2 text-xs font-medium text-slate-600 hover:bg-slate-50"
+              >
+                Đóng
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL PHÂN PHÁT ĐƠN CHO GV HOẶC PHÒNG BAN */}
       {isDispatchModalOpen && selectedRequest && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4 backdrop-blur-[2px]">
           <div className="w-full max-w-lg rounded-2xl bg-white shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
@@ -1287,7 +2003,6 @@ export default function AdminDashboardPage({ user, logoSrc = DEFAULT_LOGO_SRC, o
                 <div className="text-slate-600 italic">"Lý do: {selectedRequest.reason}"</div>
               </div>
 
-              {/* Chọn đối tượng: GV hoặc Phòng ban */}
               <div>
                 <label className="block text-xs font-semibold text-slate-700 mb-2">
                   1. Đối tượng tiếp nhận giải quyết:
@@ -1333,7 +2048,6 @@ export default function AdminDashboardPage({ user, logoSrc = DEFAULT_LOGO_SRC, o
                 </div>
               </div>
 
-              {/* Chọn cụ thể */}
               <div>
                 <label className="block text-xs font-semibold text-slate-700 mb-1.5">
                   {dispatchType === 'lecturer' ? 'Chọn Giảng viên phụ trách:' : 'Chọn Phòng ban chức năng phụ trách:'}
@@ -1360,7 +2074,6 @@ export default function AdminDashboardPage({ user, logoSrc = DEFAULT_LOGO_SRC, o
                 </select>
               </div>
 
-              {/* Hạn xử lý SLA */}
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="block text-xs font-semibold text-slate-700 mb-1.5">Mức độ ưu tiên:</label>
@@ -1389,7 +2102,6 @@ export default function AdminDashboardPage({ user, logoSrc = DEFAULT_LOGO_SRC, o
                 </div>
               </div>
 
-              {/* Lời nhắn điều phối */}
               <div>
                 <label className="block text-xs font-semibold text-slate-700 mb-1.5">
                   Ghi chú điều phối & Yêu cầu xử lý:
@@ -1424,7 +2136,7 @@ export default function AdminDashboardPage({ user, logoSrc = DEFAULT_LOGO_SRC, o
         </div>
       )}
 
-      {/* MODAL 2: XEM CHI TIẾT ĐƠN */}
+      {/* MODAL XEM CHI TIẾT ĐƠN */}
       {selectedRequest && !isDispatchModalOpen && !isRejectModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4 backdrop-blur-[2px]">
           <div className="w-full max-w-2xl rounded-2xl bg-white shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
@@ -1471,7 +2183,6 @@ export default function AdminDashboardPage({ user, logoSrc = DEFAULT_LOGO_SRC, o
                 </div>
               )}
 
-              {/* Lịch sử */}
               <div>
                 <div className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Nhật ký chuyển giao hồ sơ</div>
                 <div className="space-y-2">
@@ -1507,9 +2218,7 @@ export default function AdminDashboardPage({ user, logoSrc = DEFAULT_LOGO_SRC, o
                 <div className="flex items-center gap-2">
                   <button
                     type="button"
-                    onClick={() => {
-                      setIsRejectModalOpen(true);
-                    }}
+                    onClick={() => setIsRejectModalOpen(true)}
                     className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-xs font-semibold text-red-600 hover:bg-red-100"
                   >
                     Từ chối đơn
@@ -1540,7 +2249,7 @@ export default function AdminDashboardPage({ user, logoSrc = DEFAULT_LOGO_SRC, o
         </div>
       )}
 
-      {/* MODAL 3: TỪ CHỐI ĐƠN */}
+      {/* MODAL TỪ CHỐI ĐƠN */}
       {isRejectModalOpen && selectedRequest && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4 backdrop-blur-[2px]">
           <div className="w-full max-w-md rounded-2xl bg-white shadow-2xl overflow-hidden">
