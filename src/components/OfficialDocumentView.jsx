@@ -1,0 +1,240 @@
+import logoCdvm from '../assets/images/logocđvm.jpg';
+
+const CAMPUS_OPTIONS = ['Cầu Giấy', 'Mỹ Đình', 'Trịnh Văn Bô', 'Phúc Diễn'];
+
+/**
+ * Hiển thị toàn văn tờ đơn A4 chuẩn hành chính do sinh viên đã điền:
+ * - Dùng font Times New Roman chuẩn văn bản hành chính Việt Nam.
+ * - Hiển thị logo trường logocđvm.jpg, Quốc hiệu - Tiêu ngữ, kính gửi Ban Giám hiệu.
+ * - Đầy đủ thông tin sinh viên, lý do đề nghị.
+ * - Kèm CHỮ KÝ THỰC TẾ của sinh viên ở mục "Người làm đơn" và chữ ký GVCN (nếu đã duyệt).
+ */
+function OfficialDocumentView({ request }) {
+  if (!request) return null;
+
+  // Xử lý hiển thị ngày nộp đơn
+  let dateDisplay = 'Hà Nội, ngày......tháng......năm 2026';
+  if (request.createdAt) {
+    // Tách ngày từ chuỗi DD/MM/YYYY HH:mm hoặc ISO
+    const parts = request.createdAt.split(' ')[0].split('/');
+    if (parts.length === 3) {
+      dateDisplay = `Hà Nội, ngày ${parts[0]} tháng ${parts[1]} năm ${parts[2]}`;
+    }
+  }
+
+  return (
+    <div
+      id="printable-official-document"
+      className="w-full rounded-2xl border border-slate-300/80 bg-white p-6 shadow-md transition-all sm:p-10 text-black leading-relaxed select-text font-serif"
+      style={{
+        fontFamily: '"Times New Roman", Times, "Liberation Serif", serif',
+        fontSize: '14px',
+        minHeight: '850px',
+      }}
+    >
+      {/* Header trên cùng */}
+      <div className="border-t-2 border-black pt-3">
+        <div className="flex items-start justify-between gap-4">
+          {/* Logo trường góc trái */}
+          <div className="flex flex-col items-center">
+            <img
+              src={logoCdvm}
+              alt="Logo Trường Cao đẳng Việt Mỹ Hà Nội"
+              className="h-16 w-auto max-w-[170px] object-contain sm:h-20"
+            />
+          </div>
+
+          {/* Quốc hiệu góc phải - Chuẩn Times New Roman */}
+          <div className="text-center" style={{ fontFamily: '"Times New Roman", Times, serif' }}>
+            <p className="text-[13px] font-bold tracking-tight uppercase sm:text-[14px]">
+              CỘNG HÒA XÃ HỘI CHỦ NGHĨA VIỆT NAM
+            </p>
+            <p className="text-[13px] font-bold sm:text-[14px]">Độc lập – Tự do – Hạnh phúc</p>
+            <div className="mx-auto mt-1 h-[1px] w-32 bg-black" />
+          </div>
+        </div>
+      </div>
+
+      {/* Tiêu đề Đơn */}
+      <div className="mt-8 mb-6 text-center">
+        <h2 className="text-[16px] font-bold tracking-wide uppercase sm:text-[18px]">
+          {request.typeName ? request.typeName.toUpperCase() : 'ĐƠN XIN CẤP XÁC NHẬN HỌC SINH – SINH VIÊN'}
+        </h2>
+        <p className="mt-1 text-xs italic text-slate-500 font-sans">
+          Mã hồ sơ: {request.id} • Ngày gửi: {request.createdAt}
+        </p>
+      </div>
+
+      {/* Kính gửi */}
+      <div className="space-y-1 pl-4 sm:pl-8 text-[14px]">
+        <div className="flex items-baseline gap-2">
+          <span className="font-bold whitespace-nowrap">Kính gửi:</span>
+          <span>- Ban Giám hiệu Trường Cao đẳng Việt Mỹ Hà Nội</span>
+        </div>
+        <p className="pl-16">- Phòng đào tạo</p>
+        <p className="pl-16">- Bộ phận CTSV</p>
+      </div>
+
+      {/* Thân đơn chi tiết sinh viên đã điền */}
+      <div className="mt-6 space-y-2.5 text-[14px]">
+        <div className="flex flex-wrap items-baseline gap-x-6 gap-y-1">
+          <div className="flex-1 min-w-[200px]">
+            <span>Em tên là: </span>
+            <span className="font-bold">{request.studentName || '................................'}</span>
+          </div>
+          <div>
+            <span>Mã số sinh viên: </span>
+            <span className="font-bold">{request.studentCode || '....................'}</span>
+          </div>
+        </div>
+
+        <div>
+          <span>SĐT sinh viên: </span>
+          <span>{request.phone || '0987654321'}</span>
+        </div>
+
+        <div className="flex flex-wrap items-baseline gap-x-6 gap-y-1">
+          <div className="flex-1 min-w-[180px]">
+            <span>Ngày sinh: </span>
+            <span>{request.dob || '15/08/2005'}</span>
+          </div>
+          <div>
+            <span>Nơi sinh: </span>
+            <span>{request.pob || 'Hà Nội'}</span>
+          </div>
+        </div>
+
+        <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1">
+          <div>
+            <span>Số CCCD: </span>
+            <span>{request.idCardNumber || '001205012345'}</span>
+          </div>
+          <div>
+            <span>Ngày cấp: </span>
+            <span>{request.idCardDate || '20/08/2021'}</span>
+          </div>
+          <div>
+            <span>Nơi cấp: </span>
+            <span>{request.idCardPlace || 'Bộ Công an'}</span>
+          </div>
+        </div>
+
+        <div className="flex flex-wrap items-baseline gap-x-6 gap-y-1">
+          <div className="flex-1 min-w-[180px]">
+            <span>Hiện là sinh viên lớp: </span>
+            <span className="font-bold">{request.className || '....................'}</span>
+          </div>
+          <div>
+            <span>Chuyên ngành: </span>
+            <span className="font-bold">{request.major || '................................'}</span>
+          </div>
+        </div>
+
+        {/* Cơ sở học tập checkbox */}
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-1 pt-1">
+          <span>Cơ sở học tập:</span>
+          {CAMPUS_OPTIONS.map((item) => (
+            <span key={item} className="inline-flex items-center gap-1.5 whitespace-nowrap">
+              <span>{item}</span>
+              <span className="inline-flex h-4 w-4 items-center justify-center border border-black text-[11px] font-bold">
+                {request.campus === item ? '✓' : ''}
+              </span>
+            </span>
+          ))}
+        </div>
+
+        <div className="pt-1">
+          <span>Khóa: </span>
+          <span className="font-bold">{request.cohort || '................'}</span>
+          <span className="ml-3">Hệ đào tạo: </span>
+          <span className="font-bold">{request.trainingSystem || 'Chính quy'}</span>
+          <span> tại Trường Cao đẳng Việt Mỹ Hà Nội</span>
+        </div>
+
+        {/* Lý do đề nghị cấp giấy */}
+        <div className="pt-2">
+          <p>Em làm đơn này kính đề nghị nhà trường cấp giấy xác nhận HSSV với lý do:</p>
+          <div className="mt-1 min-h-[45px] rounded-lg border border-slate-200 bg-slate-50/50 p-3 italic text-justify text-slate-900">
+            {request.reason || '(Sinh viên chưa nhập lý do chi tiết)'}
+          </div>
+        </div>
+
+        {/* Lời cam đoan */}
+        <p className="pt-2 text-justify indent-8">
+          Em xin cam đoan sử dụng giấy chứng nhận sinh viên đúng theo lý do đã trình bày trên. Nếu em tự
+          ý nghỉ học hoặc vi phạm nội quy nhà trường bị buộc thôi học, giấy xác nhận này sẽ không có
+          giá trị sử dụng.
+        </p>
+        <p>Em xin trân thành cảm ơn!</p>
+      </div>
+
+      {/* Chân trang chữ ký */}
+      <div className="mt-8 pt-2">
+        <div className="text-right italic text-[13.5px] pr-2">{dateDisplay}</div>
+
+        <div className="mt-4 grid grid-cols-2 text-center">
+          {/* CỘT TRÁI: CHỮ KÝ GVCN */}
+          <div className="flex flex-col items-center">
+            <p className="font-bold text-[14px]">Chữ ký GVCN</p>
+            <p className="text-[12px] italic text-slate-700">(Ký và ghi rõ họ tên)</p>
+
+            <div className="my-2 flex h-24 w-full items-center justify-center">
+              {request.teacherSignature ? (
+                <div className="flex flex-col items-center">
+                  <img
+                    src={request.teacherSignature}
+                    alt="Chữ ký GVCN"
+                    className="max-h-16 max-w-[140px] object-contain"
+                  />
+                  <span className="text-[11px] font-bold text-purple-700 font-sans mt-0.5">
+                    (Đã ký duyệt điện tử)
+                  </span>
+                </div>
+              ) : (
+                <div className="flex h-20 w-full items-center justify-center text-xs text-slate-300 italic font-sans">
+                  (Chờ GVCN tiếp nhận & ký duyệt)
+                </div>
+              )}
+            </div>
+
+            <p className="font-bold text-slate-900 text-[13px]">
+              {request.assignedTo?.name || ''}
+            </p>
+          </div>
+
+          {/* CỘT PHẢI: CHỮ KÝ NGƯỜI LÀM ĐƠN (CHỮ KÝ CỦA SINH VIÊN) */}
+          <div className="flex flex-col items-center">
+            <p className="font-bold text-[14px]">Người làm đơn</p>
+            <p className="text-[12px] italic text-slate-700">(Chữ ký, ghi rõ họ tên)</p>
+
+            <div className="my-2 flex h-24 w-full items-center justify-center">
+              {request.studentSignature ? (
+                <div className="flex flex-col items-center">
+                  <img
+                    src={request.studentSignature}
+                    alt={`Chữ ký của sinh viên ${request.studentName}`}
+                    className="max-h-20 max-w-[160px] object-contain"
+                  />
+                  <span className="text-[10px] text-blue-600 font-sans font-medium">
+                    (Chữ ký số cá nhân)
+                  </span>
+                </div>
+              ) : (
+                <div className="flex h-20 w-full items-center justify-center text-xs text-slate-300 italic font-sans">
+                  (Sinh viên chưa chèn chữ ký)
+                </div>
+              )}
+            </div>
+
+            <p className="font-bold text-slate-900 text-[14px]">
+              {request.studentName || '...........................'}
+            </p>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+export default OfficialDocumentView;
+
