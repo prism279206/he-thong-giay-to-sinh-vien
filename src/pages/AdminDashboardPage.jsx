@@ -14,31 +14,16 @@ import {
   FileText,
   CheckCircle2,
   Clock,
-  Filter,
   RotateCcw,
-  ShieldCheck,
-  AlertTriangle,
   Building2,
   GraduationCap,
   SendHorizontal,
   Undo2,
   XCircle,
-  Eye,
-  Inbox,
   Check,
-  Layers,
-  Camera,
-  Upload,
-  Plus,
-  FileCheck2,
-  Download,
-  Image as ImageIcon,
-  FileUp,
-  ToggleLeft,
-  ToggleRight,
-  Sparkles,
 } from 'lucide-react';
 import { DEFAULT_LOGO_SRC } from './LoginPage';
+import SignatureManager from '../components/SignatureManager';
 
 /**
  * Tính toán danh sách 4 khóa học đang hoạt động (đồng bộ hệ thống)
@@ -889,21 +874,21 @@ export default function AdminDashboardPage({ user, logoSrc = DEFAULT_LOGO_SRC, o
       prev.map((r) =>
         r.id === req.id
           ? {
-              ...r,
-              status: 'pending',
-              statusLabel: 'Chờ tiếp nhận',
-              distributionStatus: 'unassigned',
-              assignedTo: null,
-              logs: [
-                ...r.logs,
-                {
-                  action: 'Thu hồi điều phối',
-                  actor: adminName,
-                  time: new Date().toLocaleString('vi-VN', { hour12: false }),
-                  note: 'Thu hồi về hàng đợi tiếp nhận để phân luồng lại.',
-                },
-              ],
-            }
+            ...r,
+            status: 'pending',
+            statusLabel: 'Chờ tiếp nhận',
+            distributionStatus: 'unassigned',
+            assignedTo: null,
+            logs: [
+              ...r.logs,
+              {
+                action: 'Thu hồi điều phối',
+                actor: adminName,
+                time: new Date().toLocaleString('vi-VN', { hour12: false }),
+                note: 'Thu hồi về hàng đợi tiếp nhận để phân luồng lại.',
+              },
+            ],
+          }
           : r
       )
     );
@@ -920,20 +905,20 @@ export default function AdminDashboardPage({ user, logoSrc = DEFAULT_LOGO_SRC, o
       prev.map((r) =>
         r.id === selectedRequest.id
           ? {
-              ...r,
-              status: 'completed',
-              statusLabel: 'Đã từ chối',
-              distributionStatus: 'rejected',
-              logs: [
-                ...r.logs,
-                {
-                  action: 'Từ chối tiếp nhận đơn',
-                  actor: adminName,
-                  time: new Date().toLocaleString('vi-VN', { hour12: false }),
-                  note: `Lý do từ chối: ${rejectReason}`,
-                },
-              ],
-            }
+            ...r,
+            status: 'completed',
+            statusLabel: 'Đã từ chối',
+            distributionStatus: 'rejected',
+            logs: [
+              ...r.logs,
+              {
+                action: 'Từ chối tiếp nhận đơn',
+                actor: adminName,
+                time: new Date().toLocaleString('vi-VN', { hour12: false }),
+                note: `Lý do từ chối: ${rejectReason}`,
+              },
+            ],
+          }
           : r
       )
     );
@@ -971,11 +956,10 @@ export default function AdminDashboardPage({ user, logoSrc = DEFAULT_LOGO_SRC, o
                 key={item.id}
                 type="button"
                 onClick={() => handleSelectNav(item.id)}
-                className={`flex w-full cursor-pointer items-center justify-between rounded-xl px-3.5 py-2.5 text-sm font-medium transition-all ${
-                  isActive
+                className={`flex w-full cursor-pointer items-center justify-between rounded-xl px-3.5 py-2.5 text-sm font-medium transition-all ${isActive
                     ? 'bg-[#2563EB] text-white shadow-[0_8px_18px_-6px_rgba(37,99,235,0.6)]'
                     : 'text-slate-600 hover:bg-white/80 hover:text-slate-900'
-                }`}
+                  }`}
               >
                 <div className="flex items-center gap-3">
                   <Icon className="h-[18px] w-[18px] shrink-0" strokeWidth={1.9} />
@@ -983,18 +967,16 @@ export default function AdminDashboardPage({ user, logoSrc = DEFAULT_LOGO_SRC, o
                 </div>
                 {item.id === 'pending-dispatch' && stats.pendingCount > 0 && (
                   <span
-                    className={`rounded-full px-2 py-0.5 text-xs font-bold ${
-                      isActive ? 'bg-white text-[#2563EB]' : 'bg-blue-100 text-[#2563EB]'
-                    }`}
+                    className={`rounded-full px-2 py-0.5 text-xs font-bold ${isActive ? 'bg-white text-[#2563EB]' : 'bg-blue-100 text-[#2563EB]'
+                      }`}
                   >
                     {stats.pendingCount}
                   </span>
                 )}
                 {item.id === 'request-types' && (
                   <span
-                    className={`rounded-full px-2 py-0.5 text-xs font-bold ${
-                      isActive ? 'bg-white text-[#2563EB]' : 'bg-slate-100 text-slate-600'
-                    }`}
+                    className={`rounded-full px-2 py-0.5 text-xs font-bold ${isActive ? 'bg-white text-[#2563EB]' : 'bg-slate-100 text-slate-600'
+                      }`}
                   >
                     {requestTypes.length}
                   </span>
@@ -1469,11 +1451,10 @@ export default function AdminDashboardPage({ user, logoSrc = DEFAULT_LOGO_SRC, o
                     key={cat.id}
                     type="button"
                     onClick={() => setSelectedTypeCategory(cat.id)}
-                    className={`rounded-xl px-3.5 py-1.5 text-xs font-semibold transition-all ${
-                      selectedTypeCategory === cat.id
+                    className={`rounded-xl px-3.5 py-1.5 text-xs font-semibold transition-all ${selectedTypeCategory === cat.id
                         ? 'bg-[#2563EB] text-white shadow-xs'
                         : 'border border-slate-200 bg-white text-slate-600 hover:bg-slate-50'
-                    }`}
+                      }`}
                   >
                     {cat.label}
                   </button>
@@ -2014,11 +1995,10 @@ export default function AdminDashboardPage({ user, logoSrc = DEFAULT_LOGO_SRC, o
                       setDispatchType('lecturer');
                       setTargetId(LECTURERS[0].id);
                     }}
-                    className={`flex items-center gap-2.5 rounded-xl border p-3 text-left transition-all ${
-                      dispatchType === 'lecturer'
+                    className={`flex items-center gap-2.5 rounded-xl border p-3 text-left transition-all ${dispatchType === 'lecturer'
                         ? 'border-[#2563EB] bg-blue-50/70 text-[#2563EB] ring-1 ring-[#2563EB]'
                         : 'border-slate-200 hover:border-slate-300 text-slate-700'
-                    }`}
+                      }`}
                   >
                     <GraduationCap className="h-5 w-5 shrink-0" />
                     <div>
@@ -2033,11 +2013,10 @@ export default function AdminDashboardPage({ user, logoSrc = DEFAULT_LOGO_SRC, o
                       setDispatchType('department');
                       setTargetId(DEPARTMENTS[0].id);
                     }}
-                    className={`flex items-center gap-2.5 rounded-xl border p-3 text-left transition-all ${
-                      dispatchType === 'department'
+                    className={`flex items-center gap-2.5 rounded-xl border p-3 text-left transition-all ${dispatchType === 'department'
                         ? 'border-[#2563EB] bg-blue-50/70 text-[#2563EB] ring-1 ring-[#2563EB]'
                         : 'border-slate-200 hover:border-slate-300 text-slate-700'
-                    }`}
+                      }`}
                   >
                     <Building2 className="h-5 w-5 shrink-0" />
                     <div>

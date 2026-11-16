@@ -14,6 +14,7 @@ import {
   Trash2,
 } from 'lucide-react';
 import logoCdvm from '../assets/images/logocđvm.jpg';
+import { addStudentRequest } from './mockRequestsStore';
 
 // Dữ liệu mô phỏng lấy từ API CMS của trường (lý do mặc định để trống theo yêu cầu)
 const getMockCmsData = (user) => ({
@@ -240,8 +241,52 @@ function StudentConfirmationForm({ onBack, user }) {
       return;
     }
 
+    const now = new Date();
+    const timeStr = `${String(now.getDate()).padStart(2, '0')}/${String(now.getMonth() + 1).padStart(2, '0')}/${now.getFullYear()} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+    const newRequestId = `#2026-${Math.floor(1000 + Math.random() * 9000)}`;
+
+    const newRequestPayload = {
+      id: newRequestId,
+      typeId: 'rt-confirm-student',
+      typeName: 'Đơn xin cấp xác nhận học sinh – sinh viên',
+      typeCategory: 'Xác nhận học tập',
+      studentName: formData.fullName.trim(),
+      studentCode: formData.studentCode.trim(),
+      phone: formData.phone.trim(),
+      dob: formData.dob.trim(),
+      pob: formData.pob.trim(),
+      idCardNumber: formData.idCardNumber.trim(),
+      idCardDate: formData.idCardDate.trim(),
+      idCardPlace: formData.idCardPlace.trim(),
+      cohort: (formData.academicYear || 'K24').split(' ')[0],
+      faculty: 'Khoa Công nghệ thông tin',
+      major: formData.major.trim(),
+      className: formData.className.trim(),
+      campus: formData.campus,
+      trainingSystem: formData.trainingSystem.trim(),
+      createdAt: timeStr,
+      status: 'pending',
+      statusLabel: 'Chờ tiếp nhận',
+      reason: formData.reason.trim(),
+      urgency: 'normal',
+      distributionStatus: 'unassigned',
+      assignedTo: null,
+      studentSignature: studentSignature || localStorage.getItem('vmh_saved_signature') || '',
+      teacherSignature: '',
+      logs: [
+        {
+          action: 'Nộp đơn trực tuyến',
+          actor: `${formData.fullName.trim()} (Sinh viên)`,
+          time: timeStr,
+          note: 'Sinh viên đã hoàn tất ký điện tử và gửi đơn đến Ban Tiếp nhận Một cửa.',
+        },
+      ],
+    };
+
+    addStudentRequest(newRequestPayload);
+
     alert(
-      `Đã nộp đơn xác nhận thành công!\nMã sinh viên: ${formData.studentCode}\nLý do: ${formData.reason}\n(Hồ sơ đã chuyển sang bước tiếp nhận của Bộ phận CTSV/GVCN).`
+      `Đã nộp đơn xác nhận thành công (Mã đơn: ${newRequestId})!\n\nDữ liệu đơn kèm chữ ký của bạn đã được chuyển tới Ban Tiếp nhận Một cửa (Admin) để thẩm định và phân phối tới Giảng viên/Phòng ban.`
     );
     if (onBack) onBack();
   };

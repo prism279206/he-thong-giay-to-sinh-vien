@@ -179,17 +179,20 @@ const MOCK_TEACHER_REQUESTS = [
 const COHORT_OPTIONS = ['Tất cả', ...ACTIVE_COHORTS];
 const FACULTY_OPTIONS = [
   'Tất cả',
-  'Khoa Công nghệ thông tin',
+  'Khoa Công nghệ nghệ thiết kế',
   'Khoa Kinh tế - Quản trị',
   'Khoa Ngoại ngữ',
   'Khoa Thiết kế mỹ thuật',
 ];
 const MAJOR_OPTIONS = [
   'Tất cả',
-  'Công nghệ thông tin',
-  'Quản trị kinh doanh',
-  'Tiếng Anh',
-  'Thiết kế đồ họa',
+  'Thiết kế đồ hoạ (VIG)',
+  'Công nghệ ô tô (VIT)',
+  'Digital Marketing (DMK)',
+  'Tiếng Trung Quốc',
+  'Phiên dịch tiếng Anh thương mại',
+  'Quản trị khách sạn',
+
 ];
 const CLASS_OPTIONS = [
   'Tất cả',
@@ -450,11 +453,10 @@ function TeacherDashboardPage({ user, logoSrc = DEFAULT_LOGO_SRC, onLogout }) {
                 key={item.id}
                 type="button"
                 onClick={() => handleSelectNav(item.id)}
-                className={`flex w-full cursor-pointer items-center gap-3 rounded-xl px-3.5 py-2.5 text-sm font-medium transition-all ${
-                  isActive
+                className={`flex w-full cursor-pointer items-center gap-3 rounded-xl px-3.5 py-2.5 text-sm font-medium transition-all ${isActive
                     ? 'bg-[#2563EB] text-white shadow-[0_8px_18px_-6px_rgba(37,99,235,0.6)]'
                     : 'text-slate-600 hover:bg-white/80 hover:text-slate-900'
-                }`}
+                  }`}
               >
                 <Icon className="h-[18px] w-[18px] shrink-0" strokeWidth={1.9} />
                 <span>{item.label}</span>
