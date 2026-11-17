@@ -1,4 +1,4 @@
-import { useState, useMemo, useRef } from 'react';
+import { useState, useMemo, useRef, useEffect } from 'react';
 import {
   Home,
   ClipboardList,
@@ -21,9 +21,27 @@ import {
   Undo2,
   XCircle,
   Check,
+  Layers,
+  Camera,
+  Upload,
+  Plus,
+  FileCheck2,
+  Download,
+  Image as ImageIcon,
+  FileUp,
+  Sparkles,
+  Eye,
+  ExternalLink,
 } from 'lucide-react';
 import { DEFAULT_LOGO_SRC } from './LoginPage';
 import SignatureManager from '../components/SignatureManager';
+import OfficialDocumentView from '../components/OfficialDocumentView';
+import {
+  getStoredRequests,
+  saveStoredRequests,
+  dispatchRequestByAdmin,
+  rejectRequestByAdmin,
+} from '../components/mockRequestsStore';
 
 /**
  * Tính toán danh sách 4 khóa học đang hoạt động (đồng bộ hệ thống)
@@ -181,6 +199,32 @@ const INITIAL_REQUEST_TYPES = [
     templateFileUrl: null,
   },
 ];
+
+const REQUEST_TYPES_STORAGE_KEY = 'vmh_request_types_store_v2';
+
+// Đọc danh sách loại đơn từ localStorage
+function getStoredRequestTypes() {
+  try {
+    const raw = localStorage.getItem(REQUEST_TYPES_STORAGE_KEY);
+    if (!raw) {
+      localStorage.setItem(REQUEST_TYPES_STORAGE_KEY, JSON.stringify(INITIAL_REQUEST_TYPES));
+      return INITIAL_REQUEST_TYPES;
+    }
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) && parsed.length > 0 ? parsed : INITIAL_REQUEST_TYPES;
+  } catch {
+    return INITIAL_REQUEST_TYPES;
+  }
+}
+
+// Lưu danh sách loại đơn vào localStorage
+function saveStoredRequestTypes(types) {
+  try {
+    localStorage.setItem(REQUEST_TYPES_STORAGE_KEY, JSON.stringify(types));
+  } catch (err) {
+    console.error('Lỗi khi lưu danh sách loại đơn:', err);
+  }
+}
 
 // Dữ liệu mô phỏng các đơn từ sinh viên nộp lên hệ thống
 const INITIAL_ADMIN_REQUESTS = [
@@ -525,12 +569,17 @@ export default function AdminDashboardPage({ user, logoSrc = DEFAULT_LOGO_SRC, o
   const [selectedClass, setSelectedClass] = useState('Tất cả');
   const [selectedStatus, setSelectedStatus] = useState('all');
 
-  // Quản lý danh sách đơn
-  const [requestsList, setRequestsList] = useState(INITIAL_ADMIN_REQUESTS);
+  // Quản lý danh sách đơn (lấy từ kho lưu trữ chung)
+  const [requestsList, setRequestsList] = useState(() => getStoredRequests());
   const [actionSuccessMsg, setActionSuccessMsg] = useState('');
 
-  // Quản lý danh mục các loại đơn đang có trong hệ thống
-  const [requestTypes, setRequestTypes] = useState(INITIAL_REQUEST_TYPES);
+  // Tự động đồng bộ danh sách đơn khi chuyển tab hoặc mở trang
+  useEffect(() => {
+    setRequestsList(getStoredRequests());
+  }, [activeTab]);
+
+  // Quản lý danh mục các loại đơn đang có trong hệ thống (lưu trữ vĩnh viễn trên localStorage)
+  const [requestTypes, setRequestTypes] = useState(() => getStoredRequestTypes());
   const [typeSearchTerm, setTypeSearchTerm] = useState('');
   const [selectedTypeCategory, setSelectedTypeCategory] = useState('all');
 
@@ -738,7 +787,7 @@ export default function AdminDashboardPage({ user, logoSrc = DEFAULT_LOGO_SRC, o
     setIsCameraActive(false);
   };
 
-  // Xử lý lưu loại đơn mới
+  // Xử lý lưu loại đơn mới (lưu vào localStorage vĩnh viễn)
   const handleSaveNewRequestType = (e) => {
     e.preventDefault();
     if (!newTypeName.trim()) return;
@@ -760,7 +809,14 @@ export default function AdminDashboardPage({ user, logoSrc = DEFAULT_LOGO_SRC, o
       createdAt: new Date().toLocaleDateString('vi-VN'),
     };
 
-    setRequestTypes([newTypeItem, ...requestTypes]);
+    const updatedTypes = [newTypeItem, ...requestTypes];
+    setRequestTypes(updatedTypes);
+    saveStoredRequestTypes(updatedTypes);
+
+    // Chuyển bộ lọc danh mục về 'all' và xóa từ khóa tìm kiếm để loại đơn mới xuất hiện ngay đầu danh sách
+    setSelectedTypeCategory('all');
+    setTypeSearchTerm('');
+
     setIsAddTypeModalOpen(false);
     stopCamera();
 
@@ -776,9 +832,11 @@ export default function AdminDashboardPage({ user, logoSrc = DEFAULT_LOGO_SRC, o
 
   // Bật/tắt trạng thái loại đơn
   const handleToggleTypeStatus = (typeId) => {
-    setRequestTypes((prev) =>
-      prev.map((t) => (t.id === typeId ? { ...t, isActive: !t.isActive } : t))
+    const updated = requestTypes.map((t) =>
+      t.id === typeId ? { ...t, isActive: !t.isActive } : t
     );
+    setRequestTypes(updated);
+    saveStoredRequestTypes(updated);
   };
 
   // Mở modal phân phát đơn
@@ -837,30 +895,31 @@ export default function AdminDashboardPage({ user, logoSrc = DEFAULT_LOGO_SRC, o
       };
     }
 
-    setRequestsList((prev) =>
-      prev.map((item) => {
-        if (item.id === selectedRequest.id) {
-          return {
-            ...item,
-            status: 'in_progress',
-            statusLabel: 'Đang xử lý',
-            distributionStatus: 'assigned',
-            urgency: dispatchUrgency,
-            assignedTo: targetInfo,
-            logs: [
-              ...item.logs,
-              {
-                action: `Phân phát tới: ${targetInfo.name}`,
-                actor: adminName,
-                time: targetInfo.assignedAt,
-                note: targetInfo.note,
-              },
-            ],
-          };
-        }
-        return item;
-      })
-    );
+    const updatedList = requestsList.map((item) => {
+      if (item.id === selectedRequest.id) {
+        return {
+          ...item,
+          status: 'in_progress',
+          statusLabel: 'Đang xử lý',
+          distributionStatus: 'assigned',
+          urgency: dispatchUrgency,
+          assignedTo: targetInfo,
+          logs: [
+            ...item.logs,
+            {
+              action: `Phân phát tới: ${targetInfo.name}`,
+              actor: adminName,
+              time: targetInfo.assignedAt,
+              note: targetInfo.note,
+            },
+          ],
+        };
+      }
+      return item;
+    });
+
+    setRequestsList(updatedList);
+    saveStoredRequests(updatedList);
 
     setIsDispatchModalOpen(false);
     setSelectedRequest(null);
@@ -870,10 +929,9 @@ export default function AdminDashboardPage({ user, logoSrc = DEFAULT_LOGO_SRC, o
 
   // Thu hồi phân phát về hàng đợi tiếp nhận
   const handleRevokeDispatch = (req) => {
-    setRequestsList((prev) =>
-      prev.map((r) =>
-        r.id === req.id
-          ? {
+    const updatedList = requestsList.map((r) =>
+      r.id === req.id
+        ? {
             ...r,
             status: 'pending',
             statusLabel: 'Chờ tiếp nhận',
@@ -889,9 +947,10 @@ export default function AdminDashboardPage({ user, logoSrc = DEFAULT_LOGO_SRC, o
               },
             ],
           }
-          : r
-      )
+        : r
     );
+    setRequestsList(updatedList);
+    saveStoredRequests(updatedList);
     setActionSuccessMsg(`Đã thu hồi đơn ${req.id} về hàng đợi chờ phân phối!`);
     setTimeout(() => setActionSuccessMsg(''), 4000);
   };
@@ -901,12 +960,11 @@ export default function AdminDashboardPage({ user, logoSrc = DEFAULT_LOGO_SRC, o
     e.preventDefault();
     if (!selectedRequest || !rejectReason.trim()) return;
 
-    setRequestsList((prev) =>
-      prev.map((r) =>
-        r.id === selectedRequest.id
-          ? {
+    const updatedList = requestsList.map((r) =>
+      r.id === selectedRequest.id
+        ? {
             ...r,
-            status: 'completed',
+            status: 'rejected',
             statusLabel: 'Đã từ chối',
             distributionStatus: 'rejected',
             logs: [
@@ -919,10 +977,11 @@ export default function AdminDashboardPage({ user, logoSrc = DEFAULT_LOGO_SRC, o
               },
             ],
           }
-          : r
-      )
+        : r
     );
 
+    setRequestsList(updatedList);
+    saveStoredRequests(updatedList);
     setIsRejectModalOpen(false);
     setSelectedRequest(null);
     setRejectReason('');
@@ -1903,55 +1962,110 @@ export default function AdminDashboardPage({ user, logoSrc = DEFAULT_LOGO_SRC, o
 
       {/* MODAL: XEM TRƯỚC MẪU ĐƠN */}
       {viewingTemplate && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4 backdrop-blur-[2px]">
-          <div className="w-full max-w-xl rounded-2xl bg-white shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
-            <div className="flex items-center justify-between border-b border-slate-100 px-6 py-4">
-              <div>
-                <h3 className="font-bold text-slate-800">{viewingTemplate.name}</h3>
-                <p className="text-xs text-slate-500">Mã thủ tục: {viewingTemplate.code} • Đơn vị: {viewingTemplate.departmentName}</p>
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 p-4 backdrop-blur-sm">
+          <div className="w-full max-w-3xl rounded-2xl bg-white shadow-2xl overflow-hidden flex flex-col max-h-[92vh]">
+            <div className="flex items-center justify-between border-b border-slate-100 px-6 py-4 bg-slate-50/80">
+              <div className="flex items-center gap-2.5">
+                <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-blue-100 text-[#2563EB]">
+                  <FileText className="h-5 w-5" />
+                </div>
+                <div>
+                  <h3 className="font-bold text-slate-800 text-base">{viewingTemplate.name}</h3>
+                  <p className="text-xs text-slate-500">
+                    Mã: <span className="font-semibold text-blue-600">{viewingTemplate.code}</span> • Đơn vị: {viewingTemplate.departmentName}
+                  </p>
+                </div>
               </div>
-              <button
-                type="button"
-                onClick={() => setViewingTemplate(null)}
-                className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-600"
-              >
-                <X className="h-5 w-5" />
-              </button>
+              <div className="flex items-center gap-2">
+                {viewingTemplate.templateFileUrl && (
+                  <a
+                    href={viewingTemplate.templateFileUrl}
+                    download={viewingTemplate.templateFileName || 'mau-don.pdf'}
+                    className="flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-50 transition-colors"
+                  >
+                    <Download className="h-3.5 w-3.5" />
+                    <span>Tải về</span>
+                  </a>
+                )}
+                <button
+                  type="button"
+                  onClick={() => setViewingTemplate(null)}
+                  className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-200 hover:text-slate-700"
+                >
+                  <X className="h-5 w-5" />
+                </button>
+              </div>
             </div>
 
-            <div className="flex-1 overflow-y-auto p-6 space-y-4">
+            <div className="flex-1 overflow-y-auto p-6 space-y-4 bg-slate-100/50">
+              {/* Kiểm tra file mẫu để render xem trước chính xác: Ảnh, PDF hoặc Văn bản mẫu chuẩn */}
               {viewingTemplate.templateFileUrl ? (
-                <div className="rounded-xl overflow-hidden border border-slate-200 bg-slate-100">
-                  <img
-                    src={viewingTemplate.templateFileUrl}
-                    alt={viewingTemplate.name}
-                    className="w-full h-auto object-contain max-h-[500px]"
-                  />
-                </div>
+                viewingTemplate.isImage ||
+                (typeof viewingTemplate.templateFileUrl === 'string' &&
+                  viewingTemplate.templateFileUrl.startsWith('data:image')) ? (
+                  /* Hiển thị xem trước ảnh */
+                  <div className="rounded-xl overflow-hidden border border-slate-200 bg-white p-2 shadow-sm flex items-center justify-center">
+                    <img
+                      src={viewingTemplate.templateFileUrl}
+                      alt={viewingTemplate.name}
+                      className="w-auto h-auto max-h-[560px] object-contain rounded"
+                    />
+                  </div>
+                ) : (
+                  /* Hiển thị xem trước file PDF qua iframe */
+                  <div className="rounded-xl overflow-hidden border border-slate-200 bg-white shadow-sm">
+                    <iframe
+                      src={viewingTemplate.templateFileUrl}
+                      title={viewingTemplate.name}
+                      className="w-full h-[560px] border-0"
+                    />
+                  </div>
+                )
               ) : (
-                <div className="rounded-2xl border-2 border-dashed border-slate-200 bg-slate-50 p-10 text-center space-y-3">
-                  <FileText className="mx-auto h-12 w-12 text-[#2563EB]" />
-                  <div className="font-bold text-slate-800 text-sm">{viewingTemplate.templateFileName}</div>
-                  <p className="text-xs text-slate-500 max-w-sm mx-auto">
-                    Biểu mẫu chuẩn văn bản hành chính của Trường Cao đẳng Việt Mỹ Hà Nội.
-                  </p>
-                  <span className="inline-block rounded-full bg-emerald-100 px-3 py-1 text-xs font-semibold text-emerald-800">
-                    Sẵn sàng tiếp nhận trực tuyến
-                  </span>
+                /* Với các đơn mặc định chưa upload file: Render văn bản hành chính mẫu A4 chuẩn Times New Roman */
+                <div className="rounded-xl overflow-hidden border border-slate-200 bg-white shadow-sm p-4 sm:p-6">
+                  <OfficialDocumentView
+                    request={{
+                      id: viewingTemplate.code,
+                      typeName: viewingTemplate.name,
+                      typeCategory: viewingTemplate.category,
+                      studentName: 'NGUYỄN VĂN TIẾN (MẪU)',
+                      studentCode: '24123456',
+                      phone: '0987654321',
+                      dob: '15/08/2005',
+                      pob: 'Hà Nội',
+                      idCardNumber: '001205012345',
+                      idCardDate: '20/08/2021',
+                      idCardPlace: 'Bộ Công an',
+                      faculty: 'Khoa Công nghệ thông tin',
+                      major: 'Công nghệ thông tin',
+                      className: 'CD-CNTT-K25A',
+                      campus: 'Trịnh Văn Bô',
+                      trainingSystem: 'Chính quy',
+                      createdAt: new Date().toLocaleDateString('vi-VN'),
+                      reason: viewingTemplate.description,
+                      studentSignature: '',
+                      teacherSignature: '',
+                    }}
+                  />
                 </div>
               )}
 
-              <div className="rounded-xl border border-slate-100 bg-slate-50 p-3.5 text-xs text-slate-600 space-y-1">
-                <div><strong>Mô tả:</strong> {viewingTemplate.description}</div>
-                <div><strong>Thời hạn xử lý (SLA):</strong> {viewingTemplate.slaDays} ngày làm việc</div>
+              <div className="rounded-xl border border-slate-200 bg-white p-4 text-xs text-slate-700 space-y-1.5 shadow-2xs">
+                <div className="flex items-center justify-between">
+                  <span><strong>Tệp đính kèm:</strong> {viewingTemplate.templateFileName}</span>
+                  <span><strong>Dung lượng:</strong> {viewingTemplate.templateFileSize}</span>
+                </div>
+                <div><strong>Mô tả thủ tục:</strong> {viewingTemplate.description}</div>
+                <div><strong>Thời hạn xử lý (SLA):</strong> {viewingTemplate.slaDays} ngày làm việc kể từ khi nhận đủ hồ sơ</div>
               </div>
             </div>
 
-            <div className="flex items-center justify-end border-t border-slate-100 px-6 py-3">
+            <div className="flex items-center justify-end border-t border-slate-100 px-6 py-3 bg-white">
               <button
                 type="button"
                 onClick={() => setViewingTemplate(null)}
-                className="rounded-xl border border-slate-200 px-4 py-2 text-xs font-medium text-slate-600 hover:bg-slate-50"
+                className="rounded-xl border border-slate-200 px-4 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-100"
               >
                 Đóng
               </button>
