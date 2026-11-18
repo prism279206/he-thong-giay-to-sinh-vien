@@ -409,3 +409,149 @@ export function signAndApproveByTeacher(requestId, teacherInfo, teacherSignature
   saveStoredRequests(updated);
   return updated;
 }
+
+export const REQUEST_TYPES_STORAGE_KEY = 'vmh_request_types_store_v2';
+
+export const INITIAL_REQUEST_TYPES = [
+  {
+    id: 'rt-confirm-student',
+    code: 'XAC_NHAN_SV',
+    name: 'Đơn xin cấp xác nhận học sinh - sinh viên',
+    category: 'Xác nhận học tập',
+    departmentName: 'Phòng Đào tạo & Quản lý Khoa học',
+    slaDays: 2,
+    description: 'Dùng để xác nhận đang theo học tại trường để vay vốn ngân hàng, tạm hoãn nghĩa vụ quân sự, bổ sung hồ sơ...',
+    isActive: true,
+    hasTemplateFile: true,
+    templateFileName: 'Mau_Don_Xac_Nhan_HSSV.pdf',
+    templateFileSize: '124 KB',
+    templateFileUrl: null,
+  },
+  {
+    id: 'rt-transcript',
+    code: 'CAP_BANG_DIEM',
+    name: 'Đơn xin cấp bảng điểm',
+    category: 'Học vụ & Đào tạo',
+    departmentName: 'Phòng Đào tạo & Quản lý Khoa học',
+    slaDays: 3,
+    description: 'Đề nghị cấp bảng điểm quá trình học tập các học kỳ hoặc bảng điểm tốt nghiệp có xác nhận của nhà trường.',
+    isActive: true,
+    hasTemplateFile: true,
+    templateFileName: 'Mau_Don_Xin_Bang_Diem.pdf',
+    templateFileSize: '98 KB',
+    templateFileUrl: null,
+  },
+  {
+    id: 'rt-tuition-waiver',
+    code: 'MIEN_GIAM_HOC_PHI',
+    name: 'Đơn xin miễn giảm học phí',
+    category: 'Học phí & Tài chính',
+    departmentName: 'Phòng Tài chính - Kế toán',
+    slaDays: 5,
+    description: 'Dành cho sinh viên thuộc diện chính sách, con thương binh liệt sĩ, hộ nghèo hoặc các đối tượng được hỗ trợ theo quy định.',
+    isActive: true,
+    hasTemplateFile: true,
+    templateFileName: 'Mau_Don_Mien_Giam_Hoc_Phi.pdf',
+    templateFileSize: '215 KB',
+    templateFileUrl: null,
+  },
+  {
+    id: 'rt-defer',
+    code: 'BAO_LUU',
+    name: 'Đơn xin bảo lưu kết quả học tập',
+    category: 'Học vụ & Đào tạo',
+    departmentName: 'Ban Giám hiệu & Phòng Đào tạo',
+    slaDays: 3,
+    description: 'Đề nghị tạm dừng tiến độ học và bảo lưu kết quả học tập tối đa 02 học kỳ vì lý do sức khỏe hoặc gia đình.',
+    isActive: true,
+    hasTemplateFile: true,
+    templateFileName: 'Mau_Don_Xin_Bao_Luu.pdf',
+    templateFileSize: '150 KB',
+    templateFileUrl: null,
+  },
+  {
+    id: 'rt-recheck-exam',
+    code: 'PHUC_KHAO',
+    name: 'Đơn xin phúc khảo bài thi',
+    category: 'Khảo thí & Điểm',
+    departmentName: 'Trung tâm Khảo thí & ĐBCL',
+    slaDays: 7,
+    description: 'Đề nghị rút bài thi và thành lập ban chấm phúc khảo điểm bài thi kết thúc học phần trong thời hạn 15 ngày.',
+    isActive: true,
+    hasTemplateFile: true,
+    templateFileName: 'Mau_Don_Phuc_Khao_Diem.pdf',
+    templateFileSize: '112 KB',
+    templateFileUrl: null,
+  },
+  {
+    id: 'rt-exam-delay',
+    code: 'HOAN_THI',
+    name: 'Đơn xin tạm hoãn thi kết thúc học phần',
+    category: 'Khảo thí & Điểm',
+    departmentName: 'Trung tâm Khảo thí & ĐBCL',
+    slaDays: 2,
+    description: 'Đề nghị hoãn thi kết thúc môn vì lý do ốm đau cấp cứu hoặc trường hợp bất khả kháng, có giấy viện kèm theo.',
+    isActive: true,
+    hasTemplateFile: true,
+    templateFileName: 'Mau_Don_Xin_Hoan_Thi.pdf',
+    templateFileSize: '86 KB',
+    templateFileUrl: null,
+  },
+  {
+    id: 'rt-dormitory',
+    code: 'DANG_KY_KTX',
+    name: 'Đơn đăng ký chỗ ở Ký túc xá',
+    category: 'Đời sống sinh viên',
+    departmentName: 'Ban Quản lý Ký túc xá',
+    slaDays: 2,
+    description: 'Đăng ký phòng ở nội trú tại khu ký túc xá sinh viên dành cho tân sinh viên hoặc sinh viên ở xa.',
+    isActive: true,
+    hasTemplateFile: true,
+    templateFileName: 'Mau_Don_Dang_Ky_KTX.pdf',
+    templateFileSize: '180 KB',
+    templateFileUrl: null,
+  },
+  {
+    id: 'rt-bus-pass',
+    code: 'VE_THANG_XE_BUYT',
+    name: 'Đăng ký xác nhận làm vé tháng xe buýt',
+    category: 'Đời sống sinh viên',
+    departmentName: 'Phòng Công tác Sinh viên',
+    slaDays: 1,
+    description: 'Đóng dấu xác nhận sinh viên trên bản khai đăng ký vé tháng xe buýt liên tuyến của Tổng công ty Vận tải.',
+    isActive: true,
+    hasTemplateFile: true,
+    templateFileName: 'Mau_Don_Ve_Thang_Xe_Buyt.pdf',
+    templateFileSize: '92 KB',
+    templateFileUrl: null,
+  },
+];
+
+/**
+ * Lấy danh sách các loại đơn từ localStorage
+ */
+export function getStoredRequestTypes() {
+  try {
+    const raw = localStorage.getItem(REQUEST_TYPES_STORAGE_KEY);
+    if (!raw) {
+      localStorage.setItem(REQUEST_TYPES_STORAGE_KEY, JSON.stringify(INITIAL_REQUEST_TYPES));
+      return INITIAL_REQUEST_TYPES;
+    }
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) && parsed.length > 0 ? parsed : INITIAL_REQUEST_TYPES;
+  } catch {
+    return INITIAL_REQUEST_TYPES;
+  }
+}
+
+/**
+ * Lưu danh sách các loại đơn vào localStorage
+ */
+export function saveStoredRequestTypes(types) {
+  try {
+    localStorage.setItem(REQUEST_TYPES_STORAGE_KEY, JSON.stringify(types));
+  } catch (err) {
+    console.error('Lỗi khi lưu danh sách loại đơn vào localStorage:', err);
+  }
+}
+

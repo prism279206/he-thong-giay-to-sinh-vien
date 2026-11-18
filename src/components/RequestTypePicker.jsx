@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import {
   ArrowLeft,
   ArrowRight,
@@ -10,79 +10,54 @@ import {
   PauseCircle,
   Bus,
   ClipboardList,
+  Building2,
+  Clock,
+  Download,
+  Eye,
+  FileText,
+  X,
 } from 'lucide-react';
 import StudentConfirmationForm from './StudentConfirmationForm';
+import OfficialDocumentView from './OfficialDocumentView';
+import { getStoredRequestTypes } from './mockRequestsStore';
 
-// Dữ liệu mẫu các loại đơn (sau này thay bằng requestTypeService.listActive() từ Supabase)
-const MOCK_REQUEST_TYPES = [
-  {
-    id: 'rt-confirm-student',
-    code: 'XAC_NHAN_SV',
-    name: 'Đơn xin cấp xác nhận học sinh - sinh viên',
-    description: 'Dùng để xác nhận đang theo học tại trường (vay vốn, tạm hoãn nghĩa vụ, bổ sung hồ sơ...).',
-    badge: 'Xử lý nội bộ',
-    icon: FileCheck2,
-  },
-  {
-    id: 'rt-transcript',
-    code: 'CAP_BANG_DIEM',
-    name: 'Đơn xin cấp bảng điểm',
-    description: 'Đề nghị cấp bảng điểm học tập các kỳ hoặc bảng điểm tổng kết có xác nhận của nhà trường.',
-    badge: 'Xử lý nội bộ',
-    icon: GraduationCap,
-  },
-  {
-    id: 'rt-tuition-waiver',
-    code: 'MIEN_GIAM_HOC_PHI',
-    name: 'Đơn xin miễn giảm học phí',
-    description: 'Dành cho sinh viên thuộc diện chính sách, hộ nghèo/cận nghèo hoặc các đối tượng được hỗ trợ.',
-    badge: 'Có minh chứng đính kèm',
-    icon: BadgePercent,
-  },
-  {
-    id: 'rt-recheck-exam',
-    code: 'PHUC_KHAO',
-    name: 'Đơn xin phúc khảo',
-    description: 'Đề nghị chấm phúc khảo bài thi kết thúc học phần trong thời hạn quy định.',
-    badge: 'Xử lý nội bộ',
-    icon: FileSearch,
-  },
-  {
-    id: 'rt-defer',
-    code: 'BAO_LUU',
-    name: 'Đơn xin bảo lưu kết quả học tập',
-    description: 'Đề nghị tạm dừng học và bảo lưu kết quả học tập theo quy chế đào tạo.',
-    badge: 'Cần phê duyệt',
-    icon: PauseCircle,
-  },
-  {
-    id: 'rt-bus-pass',
-    code: 'VE_THANG_XE_BUYT',
-    name: 'Đăng ký vé tháng xe buýt',
-    description: 'Xác nhận thông tin sinh viên để đăng ký làm thẻ vé tháng xe buýt ưu tiên.',
-    badge: 'Liên kết bên thứ ba',
-    icon: Bus,
-  },
-];
+function renderCategoryIcon(category, code, className = 'h-5 w-5') {
+  if (code === 'XAC_NHAN_SV' || category === 'Xác nhận học tập') return <FileCheck2 className={className} />;
+  if (code === 'CAP_BANG_DIEM' || category === 'Học vụ & Đào tạo') return <GraduationCap className={className} />;
+  if (code === 'MIEN_GIAM_HOC_PHI' || category === 'Học phí & Tài chính') return <BadgePercent className={className} />;
+  if (code === 'PHUC_KHAO' || code === 'HOAN_THI' || category === 'Khảo thí & Điểm') return <FileSearch className={className} />;
+  if (code === 'BAO_LUU') return <PauseCircle className={className} />;
+  if (code === 'VE_THANG_XE_BUYT' || code === 'DANG_KY_KTX' || category === 'Đời sống sinh viên') return <Bus className={className} />;
+  return <ClipboardList className={className} />;
+}
 
 /**
  * Giao diện chọn loại đơn khi người dùng nhấn "+ Tạo đơn mới".
- * Sau này sẽ nối trực tiếp với danh sách `request_types` và bộ render `form_schema`.
+ * Đồng bộ với danh mục loại đơn do Quản lý ban hành.
  */
 function RequestTypePicker({ onBack, user }) {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedType, setSelectedType] = useState(null);
+  const [showPreviewModal, setShowPreviewModal] = useState(false);
+
+  // Lấy danh mục các loại đơn từ kho lưu trữ (chỉ lấy các loại đang mở isActive !== false)
+  const availableTypes = useMemo(() => {
+    const list = getStoredRequestTypes();
+    return list.filter((item) => item.isActive !== false);
+  }, []);
 
   const normalizedSearch = searchTerm.trim().toLowerCase();
-  const filteredTypes = MOCK_REQUEST_TYPES.filter(
+  const filteredTypes = availableTypes.filter(
     (item) =>
       item.name.toLowerCase().includes(normalizedSearch) ||
-      item.description.toLowerCase().includes(normalizedSearch)
+      (item.code && item.code.toLowerCase().includes(normalizedSearch)) ||
+      (item.description && item.description.toLowerCase().includes(normalizedSearch)) ||
+      (item.departmentName && item.departmentName.toLowerCase().includes(normalizedSearch))
   );
 
   // Màn hình chi tiết khi đã chọn 1 loại đơn
   if (selectedType) {
-    if (selectedType.id === 'rt-confirm-student') {
+    if (selectedType.id === 'rt-confirm-student' || selectedType.code === 'XAC_NHAN_SV') {
       return (
         <StudentConfirmationForm
           onBack={() => setSelectedType(null)}
@@ -90,8 +65,6 @@ function RequestTypePicker({ onBack, user }) {
         />
       );
     }
-
-    const SelectedIcon = selectedType.icon;
 
     return (
       <div className="space-y-5">
@@ -107,17 +80,56 @@ function RequestTypePicker({ onBack, user }) {
         <div className="rounded-2xl border border-slate-200/80 bg-white p-6 shadow-sm sm:p-8">
           <div className="flex flex-col items-start gap-4 sm:flex-row sm:items-center">
             <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-blue-50 text-[#2563EB]">
-              <SelectedIcon className="h-6 w-6" />
+              {renderCategoryIcon(selectedType.category, selectedType.code, 'h-6 w-6')}
             </div>
             <div>
-              <span className="inline-block rounded-full bg-blue-50 px-2.5 py-0.5 text-xs font-medium text-[#2563EB]">
-                {selectedType.badge}
-              </span>
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="inline-block rounded-full bg-blue-50 px-2.5 py-0.5 text-xs font-semibold text-[#2563EB]">
+                  {selectedType.category || 'Thủ tục hành chính'}
+                </span>
+                <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">
+                  Mã: {selectedType.code}
+                </span>
+              </div>
               <h2 className="mt-1.5 text-lg font-bold text-slate-800 sm:text-xl">
                 {selectedType.name}
               </h2>
               <p className="mt-1 text-sm text-slate-500">{selectedType.description}</p>
             </div>
+          </div>
+
+          <div className="mt-6 grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs bg-slate-50 p-4 rounded-xl border border-slate-100">
+            <div className="flex items-center gap-2 text-slate-700">
+              <Building2 className="h-4 w-4 text-[#2563EB]" />
+              <span><strong>Đơn vị tiếp nhận:</strong> {selectedType.departmentName || 'Bộ phận Một cửa'}</span>
+            </div>
+            <div className="flex items-center gap-2 text-slate-700">
+              <Clock className="h-4 w-4 text-[#2563EB]" />
+              <span><strong>Thời hạn giải quyết (SLA):</strong> {selectedType.slaDays || 3} ngày làm việc</span>
+            </div>
+          </div>
+
+          {/* Vùng xem trước và tải mẫu đơn */}
+          <div className="mt-6 flex flex-wrap items-center gap-3">
+            {selectedType.templateFileUrl && (
+              <a
+                href={selectedType.templateFileUrl}
+                download={selectedType.templateFileName || 'mau-don.pdf'}
+                className="inline-flex items-center gap-2 rounded-xl bg-[#2563EB] px-4 py-2.5 text-xs font-semibold text-white shadow-xs hover:bg-blue-700 transition-colors"
+              >
+                <Download className="h-4 w-4" />
+                <span>Tải mẫu đơn ({selectedType.templateFileName})</span>
+              </a>
+            )}
+
+            <button
+              type="button"
+              onClick={() => setShowPreviewModal(true)}
+              className="inline-flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2.5 text-xs font-semibold text-slate-700 hover:bg-slate-50 transition-colors shadow-2xs"
+            >
+              <Eye className="h-4 w-4 text-[#2563EB]" />
+              <span>Xem trước mẫu văn bản</span>
+            </button>
           </div>
 
           <div className="mt-6 rounded-xl border border-dashed border-slate-300 bg-slate-50/70 p-8 text-center">
@@ -126,11 +138,93 @@ function RequestTypePicker({ onBack, user }) {
               Khu vực biểu mẫu nhập liệu ({selectedType.code})
             </p>
             <p className="mx-auto mt-1 max-w-md text-xs text-slate-500">
-              Biểu mẫu chi tiết của loại đơn này sẽ được gắn vào đây (hoặc render tự động từ{' '}
-              <code>form_schema</code> khi kết nối database).
+              Loại đơn này đã được Quản lý ban hành trên hệ thống. Sinh viên có thể tải mẫu đơn về điền, chụp ảnh hoặc nộp trực tiếp tại Bộ phận Một cửa.
             </p>
           </div>
         </div>
+
+        {/* Modal xem trước mẫu đơn cho Sinh viên */}
+        {showPreviewModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 p-4 backdrop-blur-sm">
+            <div className="w-full max-w-3xl rounded-2xl bg-white shadow-2xl overflow-hidden flex flex-col max-h-[92vh]">
+              <div className="flex items-center justify-between border-b border-slate-100 px-6 py-4 bg-slate-50/80">
+                <div className="flex items-center gap-2.5">
+                  <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-blue-100 text-[#2563EB]">
+                    <FileText className="h-5 w-5" />
+                  </div>
+                  <div>
+                    <h3 className="font-bold text-slate-800 text-base">{selectedType.name}</h3>
+                    <p className="text-xs text-slate-500">Mã: {selectedType.code} • Đơn vị: {selectedType.departmentName}</p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowPreviewModal(false)}
+                  className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-200 hover:text-slate-700"
+                >
+                  <X className="h-5 w-5" />
+                </button>
+              </div>
+
+              <div className="flex-1 overflow-y-auto p-6 bg-slate-100/50">
+                {selectedType.templateFileUrl ? (
+                  selectedType.isImage || selectedType.templateFileUrl.startsWith('data:image') ? (
+                    <div className="rounded-xl overflow-hidden border border-slate-200 bg-white p-2 shadow-sm flex items-center justify-center">
+                      <img
+                        src={selectedType.templateFileUrl}
+                        alt={selectedType.name}
+                        className="w-auto h-auto max-h-[560px] object-contain rounded"
+                      />
+                    </div>
+                  ) : (
+                    <div className="rounded-xl overflow-hidden border border-slate-200 bg-white shadow-sm">
+                      <iframe
+                        src={selectedType.templateFileUrl}
+                        title={selectedType.name}
+                        className="w-full h-[560px] border-0"
+                      />
+                    </div>
+                  )
+                ) : (
+                  <div className="rounded-xl overflow-hidden border border-slate-200 bg-white shadow-sm p-4 sm:p-6">
+                    <OfficialDocumentView
+                      request={{
+                        id: selectedType.code,
+                        typeName: selectedType.name,
+                        typeCategory: selectedType.category,
+                        studentName: user?.fullName || 'NGUYỄN VĂN TIẾN (MẪU)',
+                        studentCode: user?.studentCode || '24123456',
+                        phone: user?.phone || '0987654321',
+                        dob: '15/08/2005',
+                        pob: 'Hà Nội',
+                        idCardNumber: '001205012345',
+                        idCardDate: '20/08/2021',
+                        idCardPlace: 'Bộ Công an',
+                        faculty: user?.faculty || 'Khoa Công nghệ thông tin',
+                        major: user?.major || 'Công nghệ thông tin',
+                        trainingSystem: 'Chính quy',
+                        createdAt: new Date().toLocaleDateString('vi-VN'),
+                        reason: selectedType.description,
+                        studentSignature: '',
+                        teacherSignature: '',
+                      }}
+                    />
+                  </div>
+                )}
+              </div>
+
+              <div className="flex items-center justify-end border-t border-slate-100 px-6 py-3 bg-white">
+                <button
+                  type="button"
+                  onClick={() => setShowPreviewModal(false)}
+                  className="rounded-xl border border-slate-200 px-4 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-100"
+                >
+                  Đóng
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     );
   }
@@ -149,7 +243,7 @@ function RequestTypePicker({ onBack, user }) {
           </button>
           <h1 className="text-xl font-bold text-slate-800 sm:text-2xl">Chọn loại đơn cần tạo</h1>
           <p className="mt-1 text-sm text-slate-500">
-            Vui lòng chọn đúng mẫu đơn hành chính bạn muốn nộp.
+            Vui lòng chọn đúng mẫu đơn hành chính bạn muốn nộp ({availableTypes.length} loại đơn đang mở tiếp nhận).
           </p>
         </div>
 
@@ -174,8 +268,6 @@ function RequestTypePicker({ onBack, user }) {
       ) : (
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
           {filteredTypes.map((type) => {
-            const Icon = type.icon;
-
             return (
               <button
                 key={type.id}
@@ -186,10 +278,10 @@ function RequestTypePicker({ onBack, user }) {
                 <div>
                   <div className="flex items-start justify-between gap-3">
                     <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-blue-50 text-[#2563EB] transition-colors group-hover:bg-[#2563EB] group-hover:text-white">
-                      <Icon className="h-5 w-5" />
+                      {renderCategoryIcon(type.category, type.code, 'h-5 w-5')}
                     </div>
                     <span className="rounded-full bg-slate-100 px-2.5 py-0.5 text-[11px] font-medium text-slate-600">
-                      {type.badge}
+                      {type.category || 'Nội bộ'}
                     </span>
                   </div>
 
@@ -201,9 +293,12 @@ function RequestTypePicker({ onBack, user }) {
                   </p>
                 </div>
 
-                <div className="mt-4 flex items-center justify-end gap-1 text-xs font-semibold text-[#2563EB]">
-                  <span>Chọn đơn này</span>
-                  <ArrowRight className="h-3.5 w-3.5 transition-transform group-hover:translate-x-0.5" />
+                <div className="mt-4 flex items-center justify-between pt-2 border-t border-slate-100 text-xs">
+                  <span className="text-slate-400 font-medium">SLA: {type.slaDays || 2} ngày</span>
+                  <div className="flex items-center gap-1 font-semibold text-[#2563EB]">
+                    <span>Chọn đơn này</span>
+                    <ArrowRight className="h-3.5 w-3.5 transition-transform group-hover:translate-x-0.5" />
+                  </div>
                 </div>
               </button>
             );
