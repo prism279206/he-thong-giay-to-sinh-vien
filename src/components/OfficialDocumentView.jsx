@@ -231,6 +231,48 @@ function OfficialDocumentView({ request }) {
             </p>
           </div>
         </div>
+
+        {/* PHẦN ĐÓNG DẤU XÁC NHẬN CỦA BỘ PHẬN MỘT CỬA */}
+        {(request.status === 'completed' || request.finalizedBy) && (
+          <div className="mt-8 rounded-xl border-2 border-red-500/80 bg-red-50/40 p-4 font-sans select-text">
+            <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
+              <div className="text-left font-serif text-xs sm:text-sm">
+                <p className="font-bold text-red-700 uppercase tracking-wide">
+                  XÁC NHẬN CỦA BỘ PHẬN TIẾP NHẬN & TRẢ KẾT QUẢ (MỘT CỬA)
+                </p>
+                <p className="text-slate-800 mt-1">
+                  Đã đối chiếu chữ ký GVCN, kiểm tra tính hợp lệ của hồ sơ và đóng dấu số ban hành.
+                </p>
+                <p className="text-slate-600 italic mt-0.5">
+                  Cán bộ phê duyệt: <strong className="font-semibold text-slate-800">{request.finalizedBy || 'Cán bộ Quản lý Một cửa'}</strong>
+                </p>
+                {request.pickupLocation && (
+                  <p className="mt-1.5 font-bold text-blue-800">
+                    Địa điểm nhận kết quả bản cứng: {request.pickupLocation}
+                  </p>
+                )}
+              </div>
+
+              {/* Dấu đỏ số hóa */}
+              <div className="flex flex-col items-center justify-center shrink-0">
+                <div className="flex h-24 w-24 flex-col items-center justify-center rounded-full border-2 border-red-600 bg-white p-2 text-center shadow-xs ring-4 ring-red-100">
+                  <div className="text-[8px] font-bold tracking-tight text-red-600 uppercase">
+                    CĐ VIỆT MỸ HÀ NỘI
+                  </div>
+                  <div className="my-0.5 text-[8.5px] font-extrabold text-red-700 uppercase">
+                    ★ ĐÃ ĐÓNG DẤU ★
+                  </div>
+                  <div className="text-[7.5px] font-bold text-red-600 uppercase">
+                    BỘ PHẬN MỘT CỬA
+                  </div>
+                </div>
+                <span className="mt-1 text-[10px] font-bold text-red-700">
+                  {request.finalizedAt || 'Đã ban hành'}
+                </span>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

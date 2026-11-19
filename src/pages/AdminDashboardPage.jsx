@@ -38,6 +38,7 @@ import {
   saveStoredRequests,
   getStoredRequestTypes,
   saveStoredRequestTypes,
+  finalizeAndNotifyStudentByAdmin,
 } from '../components/mockRequestsStore';
 
 /**
@@ -114,6 +115,7 @@ const STATUS_FILTER_OPTIONS = [
   { value: 'all', label: 'Tất cả trạng thái' },
   { value: 'pending', label: 'Chưa hoàn thành (Chờ tiếp nhận)' },
   { value: 'in_progress', label: 'Đang xử lý (Đã phân luồng)' },
+  { value: 'teacher_approved', label: 'GV đã duyệt (Chờ Một Cửa đóng dấu)' },
   { value: 'completed', label: 'Đã hoàn thành' },
   { value: 'overdue', label: 'Quá hạn' },
 ];
@@ -186,6 +188,14 @@ function StatusPill({ status, label }) {
       </span>
     );
   }
+  if (status === 'teacher_approved') {
+    return (
+      <span className="inline-flex items-center gap-1.5 rounded-full bg-indigo-50 px-2.5 py-1 text-xs font-semibold text-indigo-700 ring-1 ring-indigo-200">
+        <span className="h-1.5 w-1.5 rounded-full bg-indigo-500 animate-pulse" />
+        <span>{label || 'GV đã duyệt (Chờ đóng dấu)'}</span>
+      </span>
+    );
+  }
   if (status === 'completed') {
     return (
       <span className="inline-flex items-center gap-1.5 rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-700">
@@ -199,6 +209,14 @@ function StatusPill({ status, label }) {
       <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-2.5 py-1 text-xs font-semibold text-emerald-700">
         <span className="h-1.5 w-1.5 rounded-full bg-emerald-500" />
         <span>{label}</span>
+      </span>
+    );
+  }
+  if (status === 'rejected') {
+    return (
+      <span className="inline-flex items-center gap-1.5 rounded-full bg-rose-50 px-2.5 py-1 text-xs font-semibold text-rose-700">
+        <span className="h-1.5 w-1.5 rounded-full bg-rose-500" />
+        <span>{label || 'Đã từ chối'}</span>
       </span>
     );
   }
@@ -271,6 +289,13 @@ export default function AdminDashboardPage({ user, logoSrc = DEFAULT_LOGO_SRC, o
   const [isRejectModalOpen, setIsRejectModalOpen] = useState(false);
   const [rejectReason, setRejectReason] = useState('');
 
+  // Modal đóng dấu & thông báo cho sinh viên (Một cửa thụ lý sau khi GV ký)
+  const [isFinalizeModalOpen, setIsFinalizeModalOpen] = useState(false);
+  const [pickupLocation, setPickupLocation] = useState('Phòng 102 - Tòa nhà A (Bộ phận Một Cửa)');
+  const [adminFinalizeNote, setAdminFinalizeNote] = useState(
+    'Đã đối chiếu xác nhận chữ ký của GVCN, đóng dấu số và hoàn tất xử lý. Sinh viên có thể đến nhận bản cứng hoặc tải bản số hóa.'
+  );
+
   // Tên cán bộ quản lý
   const adminName = user?.fullName || 'Cán bộ Quản lý Một cửa';
   const adminInitial = 'QL';
@@ -278,9 +303,10 @@ export default function AdminDashboardPage({ user, logoSrc = DEFAULT_LOGO_SRC, o
   // Thống kê số lượng
   const stats = useMemo(() => {
     const pendingCount = requestsList.filter((r) => r.status === 'pending').length;
+    const teacherApprovedCount = requestsList.filter((r) => r.status === 'teacher_approved').length;
     const completedCount = requestsList.filter((r) => r.status === 'completed').length;
     const overdueCount = requestsList.filter((r) => r.status === 'overdue').length;
-    return { pendingCount, completedCount, overdueCount };
+    return { pendingCount, teacherApprovedCount, completedCount, overdueCount };
   }, [requestsList]);
 
   // Lọc danh sách theo các tiêu chí
@@ -304,6 +330,7 @@ export default function AdminDashboardPage({ user, logoSrc = DEFAULT_LOGO_SRC, o
 
       if (selectedStatus === 'pending' && req.status !== 'pending') return false;
       if (selectedStatus === 'in_progress' && req.status !== 'in_progress') return false;
+      if (selectedStatus === 'teacher_approved' && req.status !== 'teacher_approved') return false;
       if (selectedStatus === 'completed' && req.status !== 'completed') return false;
       if (selectedStatus === 'overdue' && req.status !== 'overdue') return false;
 
@@ -643,6 +670,35 @@ export default function AdminDashboardPage({ user, logoSrc = DEFAULT_LOGO_SRC, o
     setTimeout(() => setActionSuccessMsg(''), 4500);
   };
 
+  // Mở modal đóng dấu & ban hành kết quả cho sinh viên (khi GV đã duyệt xong)
+  const handleOpenFinalize = (req) => {
+    setSelectedRequest(req);
+    setPickupLocation('Phòng 102 - Tòa nhà A (Bộ phận Một Cửa)');
+    setAdminFinalizeNote(
+      'Đã đối chiếu xác nhận chữ ký của GVCN, đóng dấu số và hoàn tất xử lý. Sinh viên có thể đến nhận bản cứng hoặc tải bản số hóa.'
+    );
+    setIsFinalizeModalOpen(true);
+  };
+
+  // Xác nhận đóng dấu và ban hành thông báo đến sinh viên qua web
+  const handleConfirmFinalize = (e) => {
+    e.preventDefault();
+    if (!selectedRequest) return;
+    const updated = finalizeAndNotifyStudentByAdmin(selectedRequest.id, {
+      pickupLocation,
+      adminName: user?.fullName || 'Cán bộ Quản lý Một cửa',
+      adminNote: adminFinalizeNote,
+    });
+    setRequestsList(updated);
+    setIsFinalizeModalOpen(false);
+    const updatedTarget = updated.find((r) => r.id === selectedRequest.id);
+    setSelectedRequest(updatedTarget || null);
+    setActionSuccessMsg(
+      `Đã đóng dấu phê duyệt và gửi thông báo hoàn tất đơn ${selectedRequest.id} tới sinh viên!`
+    );
+    setTimeout(() => setActionSuccessMsg(''), 4500);
+  };
+
   // Render Sidebar trái: Đã thay Chữ ký cá nhân bằng "Các loại đơn đang có"
   const renderSidebarContent = () => (
     <div className="flex h-full flex-col justify-between p-4">
@@ -678,12 +734,12 @@ export default function AdminDashboardPage({ user, logoSrc = DEFAULT_LOGO_SRC, o
                   <Icon className="h-[18px] w-[18px] shrink-0" strokeWidth={1.9} />
                   <span>{item.label}</span>
                 </div>
-                {item.id === 'pending-dispatch' && stats.pendingCount > 0 && (
+                {item.id === 'pending-dispatch' && (stats.pendingCount + stats.teacherApprovedCount) > 0 && (
                   <span
                     className={`rounded-full px-2 py-0.5 text-xs font-bold ${isActive ? 'bg-white text-[#2563EB]' : 'bg-blue-100 text-[#2563EB]'
                       }`}
                   >
-                    {stats.pendingCount}
+                    {stats.pendingCount + stats.teacherApprovedCount}
                   </span>
                 )}
                 {item.id === 'request-types' && (
@@ -881,6 +937,35 @@ export default function AdminDashboardPage({ user, logoSrc = DEFAULT_LOGO_SRC, o
                 </button>
               </section>
 
+              {/* Cảnh báo khi có đơn GV đã duyệt xong chờ Một cửa đóng dấu & trả kết quả */}
+              {stats.teacherApprovedCount > 0 && (
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 rounded-2xl border border-indigo-200 bg-indigo-50/90 p-4 sm:p-5 shadow-xs">
+                  <div className="flex items-center gap-3">
+                    <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-indigo-600 text-white shadow-xs">
+                      <Sparkles className="h-5 w-5" />
+                    </div>
+                    <div>
+                      <h4 className="text-sm font-bold text-indigo-950">
+                        Có {stats.teacherApprovedCount} đơn Giảng viên đã duyệt & ký số thành công!
+                      </h4>
+                      <p className="text-xs text-indigo-700">
+                        Hồ sơ đang chờ Bộ phận Một Cửa kiểm tra, đóng dấu và gửi thông báo hoàn tất đến sinh viên qua web.
+                      </p>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSelectedStatus('teacher_approved');
+                      setActiveTab('pending-dispatch');
+                    }}
+                    className="cursor-pointer shrink-0 rounded-xl bg-indigo-600 px-4 py-2 text-xs font-semibold text-white transition-colors hover:bg-indigo-700 shadow-xs"
+                  >
+                    Xem & Đóng dấu ngay
+                  </button>
+                </div>
+              )}
+
               {/* Bảng Đơn cần tiếp nhận & phân phối */}
               <section className="rounded-2xl border border-slate-200/70 bg-white p-5 shadow-xs sm:p-6">
                 <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -1049,6 +1134,16 @@ export default function AdminDashboardPage({ user, logoSrc = DEFAULT_LOGO_SRC, o
                                     Đổi luồng
                                   </button>
                                 )}
+                                {req.status === 'teacher_approved' && (
+                                  <button
+                                    type="button"
+                                    onClick={() => handleOpenFinalize(req)}
+                                    className="flex cursor-pointer items-center gap-1 rounded-lg bg-emerald-600 px-2.5 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-emerald-700 shadow-xs"
+                                  >
+                                    <CheckCircle2 className="h-3.5 w-3.5" />
+                                    <span>Đóng dấu & Báo SV</span>
+                                  </button>
+                                )}
                               </div>
                             </td>
                           </tr>
@@ -1063,59 +1158,161 @@ export default function AdminDashboardPage({ user, logoSrc = DEFAULT_LOGO_SRC, o
 
           {/* TAB 2: ĐƠN CẦN XỬ LÝ */}
           {activeTab === 'pending-dispatch' && (
-            <section className="rounded-2xl border border-slate-200/70 bg-white p-5 shadow-xs sm:p-6">
-              <div className="mb-5 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                <div>
-                  <h1 className="text-xl font-bold text-slate-800">Danh sách đơn chờ tiếp nhận & phân luồng</h1>
-                  <p className="text-sm text-slate-500">
-                    Tiếp nhận hồ sơ mới từ sinh viên và điều phối tới Giảng viên chủ nhiệm hoặc Phòng ban phụ trách.
-                  </p>
+            <div className="space-y-6">
+              {/* PHẦN 1: ĐƠN GV ĐÃ DUYỆT - CHỜ MỘT CỬA ĐÓNG DẤU & THÔNG BÁO SV */}
+              <section className="rounded-2xl border border-indigo-200 bg-white p-5 shadow-xs sm:p-6 ring-2 ring-indigo-100">
+                <div className="mb-5 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <Sparkles className="h-5 w-5 text-indigo-600" />
+                      <h1 className="text-xl font-bold text-slate-800">
+                        Đơn GV đã duyệt — Chờ Một Cửa đóng dấu & Trả kết quả ({stats.teacherApprovedCount})
+                      </h1>
+                    </div>
+                    <p className="text-sm text-slate-500 mt-1">
+                      Giáo viên chủ nhiệm đã ký số điện tử. Cán bộ Một Cửa đối chiếu, đóng dấu và gửi thông báo hoàn thành đến sinh viên qua web.
+                    </p>
+                  </div>
                 </div>
-              </div>
 
-              <div className="overflow-x-auto">
-                <table className="w-full min-w-[700px] text-left text-sm">
-                  <thead>
-                    <tr className="border-b border-slate-100 text-xs font-semibold text-slate-500">
-                      <th className="py-3 pr-4 pl-2">Mã đơn</th>
-                      <th className="px-4 py-3">Loại đơn</th>
-                      <th className="px-4 py-3">Sinh viên</th>
-                      <th className="px-4 py-3">Ngày tạo</th>
-                      <th className="px-4 py-3">Trạng thái</th>
-                      <th className="py-3 pr-2 pl-4 text-right">Thao tác</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100">
-                    {requestsList
-                      .filter((r) => r.status === 'pending')
-                      .map((req) => (
-                        <tr key={req.id} className="transition-colors hover:bg-slate-50/70">
-                          <td className="py-3.5 pr-4 pl-2 font-semibold text-slate-700 whitespace-nowrap">{req.id}</td>
-                          <td className="px-4 py-3.5 text-slate-700 whitespace-nowrap">{req.typeName}</td>
-                          <td className="px-4 py-3.5 whitespace-nowrap">
-                            <p className="font-medium text-slate-800">{req.studentName} <span className="text-slate-400 font-normal">({req.studentCode})</span></p>
-                            <p className="text-xs text-slate-400">{req.className}</p>
-                          </td>
-                          <td className="px-4 py-3.5 whitespace-nowrap text-slate-500">{req.createdAt}</td>
-                          <td className="px-4 py-3.5 whitespace-nowrap">
-                            <StatusPill status={req.status} label={req.statusLabel} />
-                          </td>
-                          <td className="py-3.5 pr-2 pl-4 text-right whitespace-nowrap">
-                            <button
-                              type="button"
-                              onClick={() => handleOpenDispatch(req)}
-                              className="flex cursor-pointer items-center gap-1 rounded-lg bg-[#2563EB] px-3 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-blue-700 shadow-xs"
-                            >
-                              <SendHorizontal className="h-3.5 w-3.5" />
-                              <span>Phân phát ngay</span>
-                            </button>
+                <div className="overflow-x-auto">
+                  <table className="w-full min-w-[700px] text-left text-sm">
+                    <thead>
+                      <tr className="border-b border-indigo-100 text-xs font-semibold text-slate-500 bg-indigo-50/50">
+                        <th className="py-3 pr-4 pl-3">Mã đơn</th>
+                        <th className="px-4 py-3">Loại đơn</th>
+                        <th className="px-4 py-3">Sinh viên</th>
+                        <th className="px-4 py-3">GV ký duyệt</th>
+                        <th className="px-4 py-3">Trạng thái</th>
+                        <th className="py-3 pr-3 pl-4 text-right">Thao tác</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {requestsList.filter((r) => r.status === 'teacher_approved').length === 0 ? (
+                        <tr>
+                          <td colSpan={6} className="py-6 text-center text-xs text-slate-400">
+                            Hiện không có đơn nào đang chờ Một Cửa đóng dấu.
                           </td>
                         </tr>
-                      ))}
-                  </tbody>
-                </table>
-              </div>
-            </section>
+                      ) : (
+                        requestsList
+                          .filter((r) => r.status === 'teacher_approved')
+                          .map((req) => (
+                            <tr key={req.id} className="transition-colors hover:bg-indigo-50/40">
+                              <td className="py-3.5 pr-4 pl-3 font-semibold text-indigo-900 whitespace-nowrap">{req.id}</td>
+                              <td className="px-4 py-3.5 text-slate-700 whitespace-nowrap">{req.typeName}</td>
+                              <td className="px-4 py-3.5 whitespace-nowrap">
+                                <p className="font-medium text-slate-800">{req.studentName} <span className="text-slate-400 font-normal">({req.studentCode})</span></p>
+                                <p className="text-xs text-slate-400">{req.className}</p>
+                              </td>
+                              <td className="px-4 py-3.5 whitespace-nowrap">
+                                <p className="font-semibold text-purple-700 text-xs">{req.teacherApprovedBy || req.assignedTo?.name || 'GVCN'}</p>
+                                <span className="text-[10px] text-slate-400">Đã ký số</span>
+                              </td>
+                              <td className="px-4 py-3.5 whitespace-nowrap">
+                                <StatusPill status={req.status} label={req.statusLabel} />
+                              </td>
+                              <td className="py-3.5 pr-3 pl-4 text-right whitespace-nowrap">
+                                <div className="flex items-center justify-end gap-2">
+                                  <button
+                                    type="button"
+                                    onClick={() => setSelectedRequest(req)}
+                                    className="cursor-pointer rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-50"
+                                  >
+                                    Chi tiết
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleOpenFinalize(req)}
+                                    className="flex cursor-pointer items-center gap-1 rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-emerald-700 shadow-xs"
+                                  >
+                                    <CheckCircle2 className="h-3.5 w-3.5" />
+                                    <span>Đóng dấu & Báo SV</span>
+                                  </button>
+                                </div>
+                              </td>
+                            </tr>
+                          ))
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </section>
+
+              {/* PHẦN 2: ĐƠN CHỜ TIẾP NHẬN & PHÂN LUỒNG */}
+              <section className="rounded-2xl border border-slate-200/70 bg-white p-5 shadow-xs sm:p-6">
+                <div className="mb-5 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                  <div>
+                    <h2 className="text-lg font-bold text-slate-800">
+                      Danh sách đơn chờ tiếp nhận & phân luồng ({stats.pendingCount})
+                    </h2>
+                    <p className="text-sm text-slate-500">
+                      Hồ sơ mới từ sinh viên cần điều phối tới Giảng viên chủ nhiệm hoặc Phòng ban phụ trách.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="overflow-x-auto">
+                  <table className="w-full min-w-[700px] text-left text-sm">
+                    <thead>
+                      <tr className="border-b border-slate-100 text-xs font-semibold text-slate-500">
+                        <th className="py-3 pr-4 pl-2">Mã đơn</th>
+                        <th className="px-4 py-3">Loại đơn</th>
+                        <th className="px-4 py-3">Sinh viên</th>
+                        <th className="px-4 py-3">Ngày tạo</th>
+                        <th className="px-4 py-3">Trạng thái</th>
+                        <th className="py-3 pr-2 pl-4 text-right">Thao tác</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {requestsList.filter((r) => r.status === 'pending').length === 0 ? (
+                        <tr>
+                          <td colSpan={6} className="py-6 text-center text-xs text-slate-400">
+                            Không có đơn nào đang chờ phân luồng.
+                          </td>
+                        </tr>
+                      ) : (
+                        requestsList
+                          .filter((r) => r.status === 'pending')
+                          .map((req) => (
+                            <tr key={req.id} className="transition-colors hover:bg-slate-50/70">
+                              <td className="py-3.5 pr-4 pl-2 font-semibold text-slate-700 whitespace-nowrap">{req.id}</td>
+                              <td className="px-4 py-3.5 text-slate-700 whitespace-nowrap">{req.typeName}</td>
+                              <td className="px-4 py-3.5 whitespace-nowrap">
+                                <p className="font-medium text-slate-800">{req.studentName} <span className="text-slate-400 font-normal">({req.studentCode})</span></p>
+                                <p className="text-xs text-slate-400">{req.className}</p>
+                              </td>
+                              <td className="px-4 py-3.5 whitespace-nowrap text-slate-500">{req.createdAt}</td>
+                              <td className="px-4 py-3.5 whitespace-nowrap">
+                                <StatusPill status={req.status} label={req.statusLabel} />
+                              </td>
+                              <td className="py-3.5 pr-2 pl-4 text-right whitespace-nowrap">
+                                <div className="flex items-center justify-end gap-2">
+                                  <button
+                                    type="button"
+                                    onClick={() => setSelectedRequest(req)}
+                                    className="cursor-pointer rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-50"
+                                  >
+                                    Chi tiết
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleOpenDispatch(req)}
+                                    className="flex cursor-pointer items-center gap-1 rounded-lg bg-[#2563EB] px-3 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-blue-700 shadow-xs"
+                                  >
+                                    <SendHorizontal className="h-3.5 w-3.5" />
+                                    <span>Phân phát</span>
+                                  </button>
+                                </div>
+                              </td>
+                            </tr>
+                          ))
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </section>
+            </div>
           )}
 
           {/* TAB 3: CÁC LOẠI ĐƠN ĐANG CÓ (THAY CHO CHỮ KÝ CỦA TÔI) */}
@@ -1930,10 +2127,53 @@ export default function AdminDashboardPage({ user, logoSrc = DEFAULT_LOGO_SRC, o
                 </div>
               )}
 
+              {/* Hiển thị xác nhận chữ ký của Giảng viên nếu đã duyệt */}
+              {selectedRequest.teacherSignature && (
+                <div className="rounded-xl border border-indigo-200 bg-indigo-50/60 p-4 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-bold text-indigo-900 uppercase tracking-wider flex items-center gap-1.5">
+                      <Check className="h-3.5 w-3.5 text-indigo-600" />
+                      Chữ ký phê duyệt của Giảng viên chủ nhiệm
+                    </span>
+                    <span className="rounded-full bg-indigo-100 px-2 py-0.5 text-[11px] font-bold text-indigo-700">
+                      Đã ký số điện tử
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-4 pt-1">
+                    <div className="flex h-16 w-36 items-center justify-center rounded-lg border border-indigo-200 bg-white p-1 shadow-xs">
+                      <img
+                        src={selectedRequest.teacherSignature}
+                        alt="Chữ ký GVCN"
+                        className="max-h-14 max-w-[130px] object-contain"
+                      />
+                    </div>
+                    <div className="text-xs text-slate-700 space-y-0.5">
+                      <p className="font-bold text-slate-900">
+                        {selectedRequest.teacherApprovedBy || selectedRequest.assignedTo?.name || 'Giảng viên chủ nhiệm'}
+                      </p>
+                      <p className="text-slate-500">Đã kiểm duyệt thông tin & đồng ý đề xuất của sinh viên.</p>
+                      <p className="font-semibold text-indigo-700">Chờ Một cửa đối chiếu, đóng dấu và thông báo sinh viên.</p>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Thông tin đóng dấu Một cửa nếu đã hoàn thành */}
+              {selectedRequest.status === 'completed' && (
+                <div className="rounded-xl border border-emerald-200 bg-emerald-50/70 p-4 space-y-1.5 text-xs text-emerald-900">
+                  <p className="font-bold text-sm flex items-center gap-1.5 text-emerald-800">
+                    <CheckCircle2 className="h-4 w-4 text-emerald-600" />
+                    Đã hoàn tất đóng dấu & Ban hành
+                  </p>
+                  <p>Địa điểm nhận: <strong>{selectedRequest.pickupLocation || 'Phòng 102 - Tòa nhà A'}</strong></p>
+                  {selectedRequest.adminNote && <p className="italic text-slate-600">Ghi chú: "{selectedRequest.adminNote}"</p>}
+                </div>
+              )}
+
               <div>
                 <div className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Nhật ký chuyển giao hồ sơ</div>
                 <div className="space-y-2">
-                  {selectedRequest.logs.map((log, index) => (
+                  {(selectedRequest.logs || []).map((log, index) => (
                     <div key={index} className="flex items-start gap-2.5 rounded-lg border border-slate-100 bg-slate-50/70 p-2.5 text-xs">
                       <div className="flex h-5 w-5 items-center justify-center rounded-full bg-blue-100 text-[#2563EB] font-bold text-[10px] shrink-0 mt-0.5">
                         {index + 1}
@@ -1991,7 +2231,97 @@ export default function AdminDashboardPage({ user, logoSrc = DEFAULT_LOGO_SRC, o
                   <span>Thu hồi điều phối</span>
                 </button>
               )}
+
+              {selectedRequest.status === 'teacher_approved' && (
+                <button
+                  type="button"
+                  onClick={() => handleOpenFinalize(selectedRequest)}
+                  className="flex items-center gap-1.5 rounded-xl bg-emerald-600 px-4 py-2 text-xs font-semibold text-white hover:bg-emerald-700 shadow-sm"
+                >
+                  <CheckCircle2 className="h-4 w-4" />
+                  <span>Đóng dấu & Thông báo cho SV</span>
+                </button>
+              )}
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL ĐÓNG DẤU & BAN HÀNH CHO SINH VIÊN */}
+      {isFinalizeModalOpen && selectedRequest && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4 backdrop-blur-[2px]">
+          <div className="w-full max-w-lg rounded-2xl bg-white shadow-2xl overflow-hidden">
+            <div className="border-b border-emerald-100 bg-emerald-50 px-6 py-4 flex items-center justify-between text-emerald-950">
+              <div className="flex items-center gap-2">
+                <CheckCircle2 className="h-5 w-5 text-emerald-600" />
+                <h3 className="font-bold text-base">Đóng dấu số & Ban hành cho Sinh viên</h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsFinalizeModalOpen(false)}
+                className="rounded-lg p-1 text-slate-400 hover:bg-emerald-100 hover:text-emerald-700"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleConfirmFinalize} className="p-6 space-y-4">
+              <div className="rounded-xl border border-slate-100 bg-slate-50 p-3.5 text-xs space-y-1">
+                <p>
+                  Mã đơn: <strong className="text-slate-800">{selectedRequest.id}</strong> — Loại đơn: <strong className="text-slate-800">{selectedRequest.typeName}</strong>
+                </p>
+                <p>
+                  Sinh viên: <strong className="text-slate-800">{selectedRequest.studentName}</strong> ({selectedRequest.studentCode}) - Lớp {selectedRequest.className}
+                </p>
+                <p className="text-indigo-700 font-medium">
+                  ✓ Giảng viên chủ nhiệm đã duyệt & ký số điện tử.
+                </p>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1.5">
+                  Địa điểm nhận kết quả bản cứng (Gửi kèm thông báo đến SV):
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={pickupLocation}
+                  onChange={(e) => setPickupLocation(e.target.value)}
+                  placeholder="Ví dụ: Phòng 102 - Tòa nhà A (Bộ phận Một Cửa)"
+                  className="w-full rounded-xl border border-slate-300 p-2.5 text-xs text-slate-800 focus:border-[#2563EB] focus:outline-none"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-700 mb-1.5">
+                  Ghi chú hướng dẫn cho sinh viên:
+                </label>
+                <textarea
+                  rows={3}
+                  value={adminFinalizeNote}
+                  onChange={(e) => setAdminFinalizeNote(e.target.value)}
+                  placeholder="Nhập ghi chú hoặc nhắc nhở khi sinh viên đến nhận..."
+                  className="w-full rounded-xl border border-slate-300 p-3 text-xs text-slate-800 focus:border-[#2563EB] focus:outline-none"
+                />
+              </div>
+
+              <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => setIsFinalizeModalOpen(false)}
+                  className="rounded-xl border border-slate-200 px-4 py-2 text-xs font-medium text-slate-600 hover:bg-slate-50"
+                >
+                  Hủy
+                </button>
+                <button
+                  type="submit"
+                  className="flex items-center gap-1.5 rounded-xl bg-emerald-600 px-5 py-2 text-xs font-semibold text-white hover:bg-emerald-700 shadow-sm"
+                >
+                  <CheckCircle2 className="h-4 w-4" />
+                  <span>Xác nhận Đóng dấu & Ban hành</span>
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

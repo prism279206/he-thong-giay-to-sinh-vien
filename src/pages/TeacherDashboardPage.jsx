@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import {
   Home,
   ClipboardList,
@@ -22,6 +22,10 @@ import {
 } from 'lucide-react';
 import { DEFAULT_LOGO_SRC } from './LoginPage';
 import SignatureManager from '../components/SignatureManager';
+import {
+  getStoredRequests,
+  signAndApproveByTeacher,
+} from '../components/mockRequestsStore';
 
 /**
  * Tính toán danh sách 4 khóa học đang hoạt động:
@@ -50,130 +54,6 @@ function getActiveCohorts(date = new Date()) {
 }
 
 const ACTIVE_COHORTS = getActiveCohorts();
-
-// Dữ liệu mô phỏng danh sách đơn gửi đến giáo viên/khoa (các khóa từ K23 đến K26)
-const MOCK_TEACHER_REQUESTS = [
-  {
-    id: '#2025-1042',
-    typeName: 'Xác nhận đang học',
-    studentName: 'Trần Văn Minh',
-    studentCode: '23D10345',
-    cohort: ACTIVE_COHORTS[2], // K25
-    faculty: 'Khoa Công nghệ thông tin',
-    major: 'Công nghệ thông tin',
-    className: `CD-CNTT-${ACTIVE_COHORTS[2]}A`,
-    createdAt: '12/11/2025 14:30',
-    status: 'pending', // pending: Chờ xử lý | in_progress: Đang xử lý | completed: Đã xử lý | overdue: Quá hạn
-    statusLabel: 'Chờ xử lý',
-    reason: 'Vay vốn học sinh sinh viên tại Ngân hàng Chính sách Xã hội địa phương.',
-    isOverdue: false,
-  },
-  {
-    id: '#2025-1041',
-    typeName: 'Xin cấp bảng điểm',
-    studentName: 'Lê Thị Hà',
-    studentCode: '23D10421',
-    cohort: ACTIVE_COHORTS[2], // K25
-    faculty: 'Khoa Công nghệ thông tin',
-    major: 'Công nghệ thông tin',
-    className: `CD-CNTT-${ACTIVE_COHORTS[2]}B`,
-    createdAt: '10/11/2025 09:15',
-    status: 'pending',
-    statusLabel: 'Chờ xử lý',
-    reason: 'Bổ sung hồ sơ xin học bổng doanh nghiệp.',
-    isOverdue: false,
-  },
-  {
-    id: '#2025-1040',
-    typeName: 'Xin xác nhận sinh viên',
-    studentName: 'Phạm Đức Anh',
-    studentCode: '23D10287',
-    cohort: ACTIVE_COHORTS[1], // K24
-    faculty: 'Khoa Kinh tế - Quản trị',
-    major: 'Quản trị kinh doanh',
-    className: `CD-QTKD-${ACTIVE_COHORTS[1]}A`,
-    createdAt: '08/11/2025 16:20',
-    status: 'pending',
-    statusLabel: 'Chờ xử lý',
-    reason: 'Tạm hoãn nghĩa vụ quân sự đợt 1 năm 2026.',
-    isOverdue: false,
-  },
-  {
-    id: '#2025-1039',
-    typeName: 'Xin giấy giới thiệu',
-    studentName: 'Hoàng Minh Đức',
-    studentCode: '23D10376',
-    cohort: ACTIVE_COHORTS[1], // K24
-    faculty: 'Khoa Công nghệ thông tin',
-    major: 'Công nghệ thông tin',
-    className: `CD-CNTT-${ACTIVE_COHORTS[1]}A`,
-    createdAt: '05/11/2025 11:45',
-    status: 'in_progress',
-    statusLabel: 'Đang xử lý',
-    reason: 'Thực tập tốt nghiệp tại Công ty Cổ phần Phần mềm FPT.',
-    isOverdue: false,
-  },
-  {
-    id: '#2025-1038',
-    typeName: 'Gia hạn thời gian bảo lưu',
-    studentName: 'Đỗ Khánh Linh',
-    studentCode: '23D10512',
-    cohort: ACTIVE_COHORTS[0], // K23
-    faculty: 'Khoa Ngoại ngữ',
-    major: 'Tiếng Anh',
-    className: `CD-TA-${ACTIVE_COHORTS[0]}A`,
-    createdAt: '02/11/2025 13:10',
-    status: 'completed',
-    statusLabel: 'Đã xử lý',
-    reason: 'Điều trị sức khỏe và xin gia hạn thời gian bảo lưu thêm 01 học kỳ.',
-    isOverdue: false,
-  },
-  {
-    id: '#2025-1035',
-    typeName: 'Xin cấp xác nhận HSSV',
-    studentName: 'Nguyễn Văn Tiến',
-    studentCode: '24123456',
-    cohort: ACTIVE_COHORTS[1], // K24
-    faculty: 'Khoa Công nghệ thông tin',
-    major: 'Công nghệ thông tin',
-    className: `CD-CNTT-${ACTIVE_COHORTS[1]}A`,
-    createdAt: '25/10/2025 08:30',
-    status: 'overdue',
-    statusLabel: 'Quá hạn',
-    reason: 'Vay vốn học tập tại Ngân hàng Chính sách Xã hội.',
-    isOverdue: true,
-  },
-  {
-    id: '#2025-1032',
-    typeName: 'Đơn xin miễn giảm học phí',
-    studentName: 'Vũ Thị Quỳnh',
-    studentCode: '23D10119',
-    cohort: ACTIVE_COHORTS[2], // K25
-    faculty: 'Khoa Kinh tế - Quản trị',
-    major: 'Quản trị kinh doanh',
-    className: `CD-QTKD-${ACTIVE_COHORTS[2]}A`,
-    createdAt: '22/10/2025 10:00',
-    status: 'overdue',
-    statusLabel: 'Quá hạn',
-    reason: 'Sinh viên diện hộ cận nghèo theo sổ hộ khẩu.',
-    isOverdue: true,
-  },
-  {
-    id: '#2025-1029',
-    typeName: 'Đơn xin phúc khảo bài thi',
-    studentName: 'Bùi Tuấn Kiệt',
-    studentCode: '23D10499',
-    cohort: ACTIVE_COHORTS[3], // K26
-    faculty: 'Khoa Thiết kế mỹ thuật',
-    major: 'Thiết kế đồ họa',
-    className: `CD-TKDH-${ACTIVE_COHORTS[3]}A`,
-    createdAt: '20/10/2025 15:20',
-    status: 'overdue',
-    statusLabel: 'Quá hạn',
-    reason: 'Đề nghị chấm lại bài thi môn Thiết kế UI/UX nâng cao.',
-    isOverdue: true,
-  },
-];
 
 // Các bộ lọc dữ liệu (Khóa học lấy động theo quy tắc ngày 1/8 hàng năm)
 const COHORT_OPTIONS = ['Tất cả', ...ACTIVE_COHORTS];
@@ -207,8 +87,9 @@ const CLASS_OPTIONS = [
 ];
 const STATUS_FILTER_OPTIONS = [
   { value: 'all', label: 'Tất cả trạng thái' },
-  { value: 'pending', label: 'Chưa hoàn thành (Chờ xử lý)' },
+  { value: 'pending', label: 'Chờ tiếp nhận' },
   { value: 'in_progress', label: 'Đang xử lý' },
+  { value: 'teacher_approved', label: 'GV đã duyệt (Chờ Một cửa)' },
   { value: 'completed', label: 'Đã hoàn thành' },
   { value: 'overdue', label: 'Quá hạn' },
 ];
@@ -282,6 +163,14 @@ function StatusPill({ status, label }) {
       </span>
     );
   }
+  if (status === 'teacher_approved') {
+    return (
+      <span className="inline-flex items-center gap-1.5 rounded-full bg-amber-50 px-2.5 py-1 text-xs font-semibold text-amber-700">
+        <span className="h-1.5 w-1.5 rounded-full bg-amber-500 animate-pulse" />
+        <span>GV đã duyệt (Chờ Một cửa đóng dấu)</span>
+      </span>
+    );
+  }
   if (status === 'completed') {
     return (
       <span className="inline-flex items-center gap-1.5 rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-700">
@@ -323,8 +212,25 @@ function TeacherDashboardPage({ user, logoSrc = DEFAULT_LOGO_SRC, onLogout }) {
 
   // Modal xem chi tiết và ký duyệt đơn của sinh viên
   const [selectedRequest, setSelectedRequest] = useState(null);
-  const [requestsList, setRequestsList] = useState(MOCK_TEACHER_REQUESTS);
+  const [requestsList, setRequestsList] = useState(() => getStoredRequests());
   const [actionSuccessMsg, setActionSuccessMsg] = useState('');
+
+  // Tự động đồng bộ danh sách đơn khi chuyển tab hoặc mở trang
+  useEffect(() => {
+    setRequestsList(getStoredRequests());
+  }, [activeTab]);
+
+  // Thống kê số lượng đơn động
+  const stats = useMemo(() => {
+    const pendingCount = requestsList.filter(
+      (r) => r.status === 'pending' || r.status === 'in_progress'
+    ).length;
+    const completedCount = requestsList.filter(
+      (r) => r.status === 'completed' || r.status === 'teacher_approved'
+    ).length;
+    const overdueCount = requestsList.filter((r) => r.status === 'overdue').length;
+    return { pendingCount, completedCount, overdueCount };
+  }, [requestsList]);
 
   // Tên giáo viên và avatar
   const teacherName = user?.fullName || 'Nguyễn Thị Mai';
@@ -372,6 +278,9 @@ function TeacherDashboardPage({ user, logoSrc = DEFAULT_LOGO_SRC, onLogout }) {
       if (selectedStatus === 'in_progress' && req.status !== 'in_progress') {
         return false;
       }
+      if (selectedStatus === 'teacher_approved' && req.status !== 'teacher_approved') {
+        return false;
+      }
       if (selectedStatus === 'completed' && req.status !== 'completed') {
         return false;
       }
@@ -408,15 +317,17 @@ function TeacherDashboardPage({ user, logoSrc = DEFAULT_LOGO_SRC, onLogout }) {
     setSelectedStatus('all');
   };
 
-  // Thao tác ký duyệt đơn
+  // Thao tác ký duyệt đơn (GV ký duyệt xong chuyển Một cửa kiểm tra, đóng dấu)
   const handleApproveRequest = (reqId) => {
-    setRequestsList((prev) =>
-      prev.map((r) =>
-        r.id === reqId ? { ...r, status: 'completed', statusLabel: 'Đã xử lý' } : r
-      )
+    const updated = signAndApproveByTeacher(reqId, {
+      name: teacherName,
+      id: user?.studentCode || user?.code || 'GV001',
+    });
+    setRequestsList(updated);
+    setActionSuccessMsg(
+      `Đã ký số phê duyệt đơn ${reqId}! Hồ sơ đã được chuyển tiếp đến Ban Tiếp nhận Một cửa để đóng dấu và ban hành kết quả cho sinh viên.`
     );
-    setActionSuccessMsg(`Đã ký duyệt và chuyển tiếp đơn ${reqId} thành công!`);
-    setTimeout(() => setActionSuccessMsg(''), 4000);
+    setTimeout(() => setActionSuccessMsg(''), 4500);
     setSelectedRequest(null);
   };
 
@@ -599,7 +510,7 @@ function TeacherDashboardPage({ user, logoSrc = DEFAULT_LOGO_SRC, onLogout }) {
                       <FileText className="h-6 w-6" />
                     </div>
                     <div className="text-left">
-                      <p className="text-2xl font-bold text-slate-800">8</p>
+                      <p className="text-2xl font-bold text-slate-800">{stats.pendingCount}</p>
                       <p className="text-sm text-slate-500">Đơn chờ xử lý</p>
                     </div>
                   </div>
@@ -616,7 +527,7 @@ function TeacherDashboardPage({ user, logoSrc = DEFAULT_LOGO_SRC, onLogout }) {
                       <CheckCircle2 className="h-6 w-6" />
                     </div>
                     <div className="text-left">
-                      <p className="text-2xl font-bold text-slate-800">45</p>
+                      <p className="text-2xl font-bold text-slate-800">{stats.completedCount}</p>
                       <p className="text-sm text-slate-500">Đã xử lý</p>
                     </div>
                   </div>
@@ -633,7 +544,7 @@ function TeacherDashboardPage({ user, logoSrc = DEFAULT_LOGO_SRC, onLogout }) {
                       <Clock className="h-6 w-6" />
                     </div>
                     <div className="text-left">
-                      <p className="text-2xl font-bold text-slate-800">3</p>
+                      <p className="text-2xl font-bold text-slate-800">{stats.overdueCount}</p>
                       <p className="text-sm text-slate-500">Đơn quá hạn</p>
                     </div>
                   </div>

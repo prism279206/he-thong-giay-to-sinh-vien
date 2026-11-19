@@ -36,8 +36,8 @@ export function parseLoginIdentifier(input) {
     return { isValid: true, type: 'email', value: lower };
   }
 
-  // 2. Trường hợp là Mã cán bộ / Giảng viên (ví dụ: QL001, GV001, AD01...)
-  if (/^(ql|gv|cb|ad)\d+$/i.test(clean)) {
+  // 2. Trường hợp là Mã cán bộ / Giảng viên (ví dụ: QL001, GV001, AD01, admin...)
+  if (/^(ql|gv|cb|ad)\d+$/i.test(clean) || lower === 'admin') {
     return { isValid: true, type: 'staff_code', value: clean.toUpperCase() };
   }
 
@@ -170,9 +170,59 @@ export async function signIn(identifier, password) {
   // 4. Chế độ dự phòng khi tài khoản chưa được tạo trên Supabase hoặc đang chạy thử nghiệm
   // Mật khẩu mặc định là 123456
   if (cleanPass === DEFAULT_PASSWORD || cleanPass === '123456') {
-    // Nếu là sinh viên: BẮT BUỘC PHẢI CÓ HỒ SƠ SINH VIÊN ĐÃ ĐƯỢC XÁC THỰC THÀNH CÔNG TỪ CMS
-    if (studentCmsData) {
-      const student = studentCmsData;
+    // 4.1 Nếu là Cán bộ Quản lý Một cửa (mã QL... hoặc email ql001@... hoặc admin)
+    if (
+      (type === 'staff_code' && (value.startsWith('QL') || value.startsWith('AD') || value === 'ADMIN')) ||
+      targetEmail.includes('ql001') ||
+      targetEmail.includes('admin')
+    ) {
+      const adminEmail = targetEmail.includes('@') ? targetEmail : 'ql001@caodangvietmyhanoi.edu.vn';
+      return {
+        data: {
+          user: { id: 'mock-ql001', email: adminEmail, role: 'admin' },
+          profile: {
+            id: 'mock-ql001',
+            email: adminEmail,
+            ho_ten: 'Cán bộ Tiếp nhận Một cửa',
+            role: 'admin',
+            phong_ban: 'Phòng Đào tạo & Quản lý Khoa học',
+          },
+        },
+        error: null,
+      };
+    }
+
+    // 4.2 Nếu là Giảng viên (mã GV... hoặc email trường của giảng viên)
+    if (
+      (type === 'staff_code' && value.startsWith('GV')) ||
+      targetEmail.includes('huong.do') ||
+      targetEmail.includes('maiant')
+    ) {
+      const gvEmail = targetEmail.includes('@') ? targetEmail : 'maiant@caodangvietmyhanoi.edu.vn';
+      return {
+        data: {
+          user: { id: 'mock-gv001', email: gvEmail, role: 'staff' },
+          profile: {
+            id: 'mock-gv001',
+            email: gvEmail,
+            ho_ten: 'ThS. Nguyễn Thị Mai',
+            role: 'staff',
+            khoa: 'Khoa Công nghệ thông tin',
+          },
+        },
+        error: null,
+      };
+    }
+
+    // 4.3 Nếu là sinh viên
+    if (studentCmsData || type === 'student_code') {
+      const student = studentCmsData || {
+        hoTen: 'Nguyễn Văn Tiến',
+        maSinhVien: cleanId,
+        lop: 'Cao đẳng CNTT K24',
+        khoa: 'Khoa Công nghệ',
+        nganh: 'Công nghệ thông tin',
+      };
       return {
         data: {
           user: { id: `mock-${student.maSinhVien}`, email: targetEmail },
@@ -185,48 +235,6 @@ export async function signIn(identifier, password) {
             khoa: student.khoa || 'Khoa Công nghệ',
             nganh: student.nganh || 'Công nghệ thông tin',
             role: 'student',
-          },
-        },
-        error: null,
-      };
-    }
-
-    // Nếu là Giảng viên (mã GV... hoặc email trường của giảng viên)
-    if (
-      (type === 'staff_code' && value.startsWith('GV')) ||
-      targetEmail.includes('huong.do') ||
-      targetEmail.includes('maiant')
-    ) {
-      return {
-        data: {
-          user: { id: 'mock-gv001', email: targetEmail.includes('@') ? targetEmail : 'maiant@caodangvietmyhanoi.edu.vn' },
-          profile: {
-            id: 'mock-gv001',
-            email: targetEmail.includes('@') ? targetEmail : 'maiant@caodangvietmyhanoi.edu.vn',
-            ho_ten: 'ThS. Nguyễn Thị Mai',
-            role: 'staff',
-            khoa: 'Khoa Công nghệ thông tin',
-          },
-        },
-        error: null,
-      };
-    }
-
-    // Nếu là Cán bộ Quản lý Một cửa (mã QL... hoặc email ql001@...)
-    if (
-      (type === 'staff_code' && (value.startsWith('QL') || value.startsWith('AD'))) ||
-      targetEmail.includes('ql001') ||
-      targetEmail.includes('admin')
-    ) {
-      return {
-        data: {
-          user: { id: 'mock-ql001', email: targetEmail.includes('@') ? targetEmail : 'ql001@caodangvietmyhanoi.edu.vn' },
-          profile: {
-            id: 'mock-ql001',
-            email: targetEmail.includes('@') ? targetEmail : 'ql001@caodangvietmyhanoi.edu.vn',
-            ho_ten: 'Cán bộ Tiếp nhận Một cửa',
-            role: 'admin',
-            phong_ban: 'Phòng Đào tạo & Quản lý Khoa học',
           },
         },
         error: null,

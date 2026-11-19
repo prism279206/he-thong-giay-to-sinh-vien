@@ -368,28 +368,190 @@ export function rejectRequestByAdmin(requestId, rejectReason) {
   return updated;
 }
 
+const NOTIFICATIONS_STORAGE_KEY = 'vmh_student_notifications_v1';
+
+const INITIAL_NOTIFICATIONS = [
+  {
+    id: 'notif-1',
+    studentCode: '24123456',
+    title: 'Hồ sơ đã được tiếp nhận',
+    body: 'Đơn #2026-1045 (Đơn xin cấp xác nhận học sinh – sinh viên) của bạn đã được chuyển đến Ban Tiếp nhận Một cửa.',
+    time: '16/11/2026 09:16',
+    isRead: false,
+    requestId: '#2026-1045',
+  },
+  {
+    id: 'notif-2',
+    studentCode: '61112420189',
+    title: 'Chào mừng bạn đến với Cổng dịch vụ một cửa',
+    body: 'Bạn có thể nộp đơn xin cấp giấy xác nhận, bảng điểm và theo dõi tiến độ xử lý trực tiếp trên hệ thống.',
+    time: 'Hôm nay',
+    isRead: false,
+  },
+];
+
 /**
- * Giảng viên / Cán bộ ký duyệt đơn
+ * Lấy danh sách thông báo của sinh viên
  */
-export function signAndApproveByTeacher(requestId, teacherInfo, teacherSignatureData) {
+export function getStoredNotifications(studentCode) {
+  try {
+    const raw = localStorage.getItem(NOTIFICATIONS_STORAGE_KEY);
+    if (!raw) {
+      localStorage.setItem(NOTIFICATIONS_STORAGE_KEY, JSON.stringify(INITIAL_NOTIFICATIONS));
+      return studentCode
+        ? INITIAL_NOTIFICATIONS.filter((n) => !n.studentCode || n.studentCode === studentCode)
+        : INITIAL_NOTIFICATIONS;
+    }
+    const parsed = JSON.parse(raw);
+    const list = Array.isArray(parsed) ? parsed : INITIAL_NOTIFICATIONS;
+    return studentCode
+      ? list.filter((n) => !n.studentCode || n.studentCode === studentCode)
+      : list;
+  } catch {
+    return INITIAL_NOTIFICATIONS;
+  }
+}
+
+/**
+ * Thêm thông báo mới cho sinh viên
+ */
+export function addStudentNotification(notification) {
+  try {
+    const raw = localStorage.getItem(NOTIFICATIONS_STORAGE_KEY);
+    const current = raw ? JSON.parse(raw) : INITIAL_NOTIFICATIONS;
+    const newNotif = {
+      id: `notif-${Date.now()}`,
+      time: new Date().toLocaleString('vi-VN', { hour12: false }),
+      isRead: false,
+      ...notification,
+    };
+    const updated = [newNotif, ...(Array.isArray(current) ? current : [])];
+    localStorage.setItem(NOTIFICATIONS_STORAGE_KEY, JSON.stringify(updated));
+    return updated;
+  } catch (err) {
+    console.error('Lỗi khi thêm thông báo:', err);
+  }
+}
+
+/**
+ * Đánh dấu thông báo là đã đọc
+ */
+export function markNotificationAsRead(notifId) {
+  try {
+    const raw = localStorage.getItem(NOTIFICATIONS_STORAGE_KEY);
+    if (!raw) return;
+    const current = JSON.parse(raw);
+    if (Array.isArray(current)) {
+      const updated = current.map((n) => (n.id === notifId ? { ...n, isRead: true } : n));
+      localStorage.setItem(NOTIFICATIONS_STORAGE_KEY, JSON.stringify(updated));
+    }
+  } catch (err) {
+    console.error('Lỗi khi đánh dấu thông báo:', err);
+  }
+}
+
+/**
+ * Giảng viên / Cán bộ ký duyệt đơn:
+ * Theo quy trình: GV ký duyệt xong CHƯA trả về SV luôn,
+ * mà chuyển trạng thái "teacher_approved" và gửi về Ban Quản lý Một cửa.
+ */
+export function signAndApproveByTeacher(requestId, teacherInfoOrSig, signatureOrTeacherName) {
   const currentList = getStoredRequests();
   const now = new Date();
   const timeStr = `${String(now.getDate()).padStart(2, '0')}/${String(now.getMonth() + 1).padStart(2, '0')}/${now.getFullYear()} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
 
-  const sigToUse =
-    teacherSignatureData ||
-    localStorage.getItem('vmh_saved_signature') ||
-    DEFAULT_TEACHER_SIGNATURE;
+  let sigToUse = DEFAULT_TEACHER_SIGNATURE;
+  let teacherName = 'ThS. Nguyễn Thị Mai';
+
+  if (typeof teacherInfoOrSig === 'string' && teacherInfoOrSig.startsWith('data:image')) {
+    sigToUse = teacherInfoOrSig;
+    if (typeof signatureOrTeacherName === 'string') {
+      teacherName = signatureOrTeacherName;
+    } else if (signatureOrTeacherName?.name) {
+      teacherName = signatureOrTeacherName.name;
+    }
+  } else if (typeof teacherInfoOrSig === 'object' && teacherInfoOrSig !== null) {
+    teacherName = teacherInfoOrSig.name || teacherName;
+    if (signatureOrTeacherName) sigToUse = signatureOrTeacherName;
+  } else if (typeof teacherInfoOrSig === 'string') {
+    teacherName = teacherInfoOrSig;
+    if (signatureOrTeacherName) sigToUse = signatureOrTeacherName;
+  }
+
+  if (!sigToUse && typeof localStorage !== 'undefined') {
+    sigToUse = localStorage.getItem('vmh_saved_signature') || DEFAULT_TEACHER_SIGNATURE;
+  }
 
   const updated = currentList.map((req) => {
     if (req.id === requestId) {
       const newLogs = [
         ...(req.logs || []),
         {
-          action: 'Ký duyệt hoàn tất',
-          actor: `GVCN ${teacherInfo?.name || 'Nguyễn Thị Mai'}`,
+          action: 'GVCN ký duyệt & Chuyển Một cửa',
+          actor: `GVCN ${teacherName}`,
           time: timeStr,
-          note: 'Đã ký số điện tử GVCN phê duyệt đơn.',
+          note: `GVCN (${teacherName}) đã ký số xác nhận hợp lệ. Đã chuyển hồ sơ về Ban Tiếp nhận Một cửa để đóng dấu và ban hành cho sinh viên.`,
+        },
+      ];
+
+      return {
+        ...req,
+        status: 'teacher_approved',
+        statusLabel: 'GV đã duyệt (Chờ Một cửa đóng dấu)',
+        distributionStatus: 'teacher_signed',
+        teacherSignature: sigToUse,
+        teacherApprovedAt: timeStr,
+        teacherApprovedBy: teacherName,
+        logs: newLogs,
+      };
+    }
+    return req;
+  });
+
+  saveStoredRequests(updated);
+  return updated;
+}
+
+/**
+ * Cán bộ Quản lý Một cửa kiểm tra, đóng dấu và Ban hành kết quả cho Sinh viên:
+ * Lúc này đơn mới chính thức "completed" và gửi thông báo qua web cho sinh viên.
+ */
+export function finalizeAndNotifyStudentByAdmin(
+  requestId,
+  adminNameOrOptions = 'Cán bộ Quản lý Một cửa',
+  pickupInfo = '',
+  adminNote = ''
+) {
+  const currentList = getStoredRequests();
+  const now = new Date();
+  const timeStr = `${String(now.getDate()).padStart(2, '0')}/${String(now.getMonth() + 1).padStart(2, '0')}/${now.getFullYear()} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+
+  let targetAdminName = 'Cán bộ Quản lý Một cửa';
+  let targetPickup = 'Phòng 102 - Tòa nhà A (Bộ phận Một Cửa)';
+  let targetNote = '';
+
+  if (typeof adminNameOrOptions === 'object' && adminNameOrOptions !== null) {
+    targetAdminName = adminNameOrOptions.adminName || targetAdminName;
+    targetPickup = adminNameOrOptions.pickupLocation || adminNameOrOptions.pickupInfo || targetPickup;
+    targetNote = adminNameOrOptions.adminNote || targetNote;
+  } else if (typeof adminNameOrOptions === 'string') {
+    targetAdminName = adminNameOrOptions || targetAdminName;
+    if (pickupInfo) targetPickup = pickupInfo;
+    if (adminNote) targetNote = adminNote;
+  }
+
+  let targetReq = null;
+
+  const updated = currentList.map((req) => {
+    if (req.id === requestId) {
+      targetReq = req;
+      const newLogs = [
+        ...(req.logs || []),
+        {
+          action: 'Đóng dấu & Ban hành (Một cửa)',
+          actor: targetAdminName,
+          time: timeStr,
+          note: targetNote || `Đã kiểm tra chữ ký GVCN, ký duyệt đóng dấu văn bản và ban hành kết quả cho sinh viên. Địa điểm nhận: ${targetPickup}`,
         },
       ];
 
@@ -398,8 +560,10 @@ export function signAndApproveByTeacher(requestId, teacherInfo, teacherSignature
         status: 'completed',
         statusLabel: 'Đã hoàn thành',
         distributionStatus: 'resolved',
-        teacherSignature: sigToUse,
-        approvedAt: timeStr,
+        finalizedAt: timeStr,
+        finalizedBy: targetAdminName,
+        pickupLocation: targetPickup,
+        adminNote: targetNote,
         logs: newLogs,
       };
     }
@@ -407,6 +571,19 @@ export function signAndApproveByTeacher(requestId, teacherInfo, teacherSignature
   });
 
   saveStoredRequests(updated);
+
+  // Gửi thông báo đến sinh viên qua web
+  if (targetReq) {
+    addStudentNotification({
+      studentCode: targetReq.studentCode,
+      title: 'Hồ sơ đã được phê duyệt & ban hành',
+      message: `Đơn ${targetReq.id} (${targetReq.typeName}) của bạn đã được GVCN ký duyệt và Ban Quản lý Một cửa đóng dấu hoàn tất. Bạn có thể đến ${targetPickup} để nhận bản cứng hoặc xem bản điện tử trên hệ thống.`,
+      body: `Đơn ${targetReq.id} (${targetReq.typeName}) của bạn đã được GVCN ký duyệt và Ban Quản lý Một cửa đóng dấu hoàn tất.`,
+      pickupLocation: targetPickup,
+      requestId: targetReq.id,
+    });
+  }
+
   return updated;
 }
 

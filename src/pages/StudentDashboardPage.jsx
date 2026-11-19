@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import {
   Home,
   FileText,
@@ -20,50 +20,12 @@ import {
 import { DEFAULT_LOGO_SRC } from './LoginPage';
 import RequestTypePicker from '../components/RequestTypePicker';
 import SignatureManager from '../components/SignatureManager';
-
-// Dữ liệu giả danh sách đơn (sau này thay bằng requestService.listMine() từ Supabase)
-const MOCK_REQUESTS = [
-  {
-    id: '#2025-1042',
-    typeName: 'Đơn xin cấp xác nhận học sinh - sinh viên',
-    createdAt: '12/11/2025 14:30',
-    statusKey: 'processing',
-    statusLabel: 'Đang xử lý',
-    note: 'Hồ sơ đang được phòng Công tác sinh viên tiếp nhận và kiểm tra.',
-  },
-  {
-    id: '#2025-1041',
-    typeName: 'Đơn xin cấp bảng điểm',
-    createdAt: '10/11/2025 09:15',
-    statusKey: 'completed',
-    statusLabel: 'Đã hoàn thành',
-    note: 'Sinh viên có thể nhận bảng điểm tại phòng Đào tạo trong giờ hành chính.',
-  },
-  {
-    id: '#2025-1040',
-    typeName: 'Đơn xin miễn giảm học phí',
-    createdAt: '08/11/2025 16:20',
-    statusKey: 'completed',
-    statusLabel: 'Đã hoàn thành',
-    note: 'Hồ sơ đã được phê duyệt.',
-  },
-  {
-    id: '#2025-1039',
-    typeName: 'Đơn xin phúc khảo',
-    createdAt: '05/11/2025 11:45',
-    statusKey: 'submitted',
-    statusLabel: 'Đang chờ duyệt',
-    note: 'Đã tiếp nhận đơn, chờ phân công kiểm tra.',
-  },
-  {
-    id: '#2025-1038',
-    typeName: 'Đơn xin bảo lưu kết quả học tập',
-    createdAt: '02/11/2025 13:10',
-    statusKey: 'completed',
-    statusLabel: 'Đã hoàn thành',
-    note: 'Quyết định bảo lưu đã hoàn tất.',
-  },
-];
+import OfficialDocumentView from '../components/OfficialDocumentView';
+import {
+  getStoredRequests,
+  getStoredNotifications,
+  markNotificationAsRead,
+} from '../components/mockRequestsStore';
 
 // Menu điều hướng bên trái (đã bỏ mục Tạo đơn theo yêu cầu)
 const NAV_ITEMS = [
@@ -74,17 +36,40 @@ const NAV_ITEMS = [
 ];
 
 const STATUS_BADGE_MAP = {
-  processing: {
+  pending: {
+    pillClass: 'bg-amber-50 text-amber-700',
+    dotClass: 'bg-amber-500',
+    defaultLabel: 'Chờ tiếp nhận',
+  },
+  in_progress: {
     pillClass: 'bg-blue-50 text-[#2563EB]',
     dotClass: 'bg-[#2563EB]',
+    defaultLabel: 'Đang xử lý',
+  },
+  teacher_approved: {
+    pillClass: 'bg-indigo-50 text-indigo-700',
+    dotClass: 'bg-indigo-500 animate-pulse',
+    defaultLabel: 'GV đã duyệt (Chờ Một cửa đóng dấu)',
   },
   completed: {
     pillClass: 'bg-emerald-50 text-emerald-700',
     dotClass: 'bg-emerald-500',
+    defaultLabel: 'Đã hoàn thành',
+  },
+  rejected: {
+    pillClass: 'bg-rose-50 text-rose-700',
+    dotClass: 'bg-rose-500',
+    defaultLabel: 'Bị từ chối',
   },
   submitted: {
     pillClass: 'bg-amber-50 text-amber-700',
     dotClass: 'bg-amber-500',
+    defaultLabel: 'Chờ tiếp nhận',
+  },
+  processing: {
+    pillClass: 'bg-blue-50 text-[#2563EB]',
+    dotClass: 'bg-[#2563EB]',
+    defaultLabel: 'Đang xử lý',
   },
 };
 
@@ -144,13 +129,14 @@ function CampusIllustration() {
 
 function StatusBadge({ statusKey, label }) {
   const style = STATUS_BADGE_MAP[statusKey] || STATUS_BADGE_MAP.submitted;
+  const displayLabel = label || style.defaultLabel || 'Chờ xử lý';
 
   return (
     <span
-      className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium ${style.pillClass}`}
+      className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold ${style.pillClass}`}
     >
       <span className={`h-1.5 w-1.5 rounded-full ${style.dotClass}`} />
-      <span>{label}</span>
+      <span>{displayLabel}</span>
     </span>
   );
 }
@@ -163,20 +149,64 @@ function StudentDashboardPage({ user, logoSrc = DEFAULT_LOGO_SRC, onLogout }) {
   const [searchQuery, setSearchQuery] = useState('');
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [selectedRequest, setSelectedRequest] = useState(null);
+  const [showNotifications, setShowNotifications] = useState(false);
+  const [viewFullDoc, setViewFullDoc] = useState(false);
+
+  // Đọc danh sách đơn từ localStorage dùng chung (đồng bộ với Một cửa và Giảng viên)
+  const [storedRequests, setStoredRequests] = useState(() => getStoredRequests());
+  const [notifications, setNotifications] = useState(() =>
+    getStoredNotifications(user?.studentCode)
+  );
+
+  useEffect(() => {
+    setStoredRequests(getStoredRequests());
+    setNotifications(getStoredNotifications(user?.studentCode));
+  }, [activeTab, user?.studentCode]);
+
+  const unreadNotifCount = useMemo(() => {
+    return notifications.filter((n) => !n.isRead).length;
+  }, [notifications]);
+
+  // Lọc đơn của sinh viên hiện tại
+  const myRequests = useMemo(() => {
+    const myCode = user?.studentCode || '61112420189';
+    const list = storedRequests.filter(
+      (r) => !r.studentCode || r.studentCode === myCode || r.studentName === user?.fullName
+    );
+    return list.length > 0 ? list : storedRequests;
+  }, [storedRequests, user]);
 
   const normalizedQuery = searchQuery.trim().toLowerCase();
-  const filteredRequests = MOCK_REQUESTS.filter(
-    (req) =>
-      req.id.toLowerCase().includes(normalizedQuery) ||
-      req.typeName.toLowerCase().includes(normalizedQuery) ||
-      req.statusLabel.toLowerCase().includes(normalizedQuery)
-  );
+  const filteredRequests = useMemo(() => {
+    return myRequests.filter((req) => {
+      const match =
+        req.id.toLowerCase().includes(normalizedQuery) ||
+        (req.typeName && req.typeName.toLowerCase().includes(normalizedQuery)) ||
+        (req.statusLabel && req.statusLabel.toLowerCase().includes(normalizedQuery));
+      return match;
+    });
+  }, [myRequests, normalizedQuery]);
+
+  const stats = useMemo(() => {
+    const pendingCount = myRequests.filter((r) => r.status === 'pending').length;
+    const inProgressCount = myRequests.filter(
+      (r) => r.status === 'in_progress' || r.status === 'teacher_approved'
+    ).length;
+    const completedCount = myRequests.filter((r) => r.status === 'completed').length;
+    const totalSent = myRequests.length;
+    return { pendingCount, inProgressCount, completedCount, totalSent };
+  }, [myRequests]);
 
   const userInitial = (user?.fullName || 'S').trim().charAt(0).toUpperCase();
 
   const handleSelectNav = (tabId) => {
     setActiveTab(tabId);
     setMobileMenuOpen(false);
+  };
+
+  const handleMarkNotifRead = (id) => {
+    markNotificationAsRead(id);
+    setNotifications(getStoredNotifications(user?.studentCode));
   };
 
   const renderSidebarContent = () => (
@@ -259,7 +289,10 @@ function StudentDashboardPage({ user, logoSrc = DEFAULT_LOGO_SRC, onLogout }) {
                 <td className="px-4 py-3.5 text-slate-700">{req.typeName}</td>
                 <td className="px-4 py-3.5 whitespace-nowrap text-slate-500">{req.createdAt}</td>
                 <td className="px-4 py-3.5 whitespace-nowrap">
-                  <StatusBadge statusKey={req.statusKey} label={req.statusLabel} />
+                  <StatusBadge
+                    statusKey={req.status || req.statusKey}
+                    label={req.statusLabel}
+                  />
                 </td>
                 <td className="py-3.5 pr-2 pl-4 text-right whitespace-nowrap">
                   <button
@@ -333,14 +366,76 @@ function StudentDashboardPage({ user, logoSrc = DEFAULT_LOGO_SRC, onLogout }) {
           </div>
 
           <div className="flex shrink-0 items-center gap-3 sm:gap-5">
-            <button
-              type="button"
-              className="relative cursor-pointer rounded-xl p-2 text-slate-600 transition-colors hover:bg-slate-100"
-              aria-label="Thông báo"
-            >
-              <Bell className="h-5 w-5" strokeWidth={1.8} />
-              <span className="absolute top-1.5 right-2 h-2 w-2 rounded-full bg-red-500 ring-2 ring-white" />
-            </button>
+            {/* Chuông thông báo trực tiếp qua Web */}
+            <div className="relative">
+              <button
+                type="button"
+                onClick={() => setShowNotifications((prev) => !prev)}
+                className="relative cursor-pointer rounded-xl p-2 text-slate-600 transition-colors hover:bg-slate-100"
+                aria-label="Thông báo"
+              >
+                <Bell className="h-5 w-5" strokeWidth={1.8} />
+                {unreadNotifCount > 0 && (
+                  <span className="absolute -top-0.5 -right-0.5 flex h-4 min-w-[16px] items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold text-white ring-2 ring-white">
+                    {unreadNotifCount}
+                  </span>
+                )}
+              </button>
+
+              {/* Popover danh sách thông báo */}
+              {showNotifications && (
+                <div className="absolute right-0 top-full mt-2 z-50 w-80 sm:w-96 rounded-2xl border border-slate-200 bg-white p-4 shadow-2xl">
+                  <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+                    <div className="flex items-center gap-2">
+                      <Bell className="h-4 w-4 text-[#2563EB]" />
+                      <h4 className="text-sm font-bold text-slate-800">Thông báo từ Nhà trường</h4>
+                    </div>
+                    <span className="rounded-full bg-blue-50 px-2 py-0.5 text-xs font-semibold text-[#2563EB]">
+                      {notifications.length} tin
+                    </span>
+                  </div>
+
+                  <div className="mt-3 max-h-72 space-y-2 overflow-y-auto">
+                    {notifications.length === 0 ? (
+                      <p className="py-6 text-center text-xs text-slate-400">
+                        Bạn chưa có thông báo nào từ nhà trường.
+                      </p>
+                    ) : (
+                      notifications.map((notif) => (
+                        <div
+                          key={notif.id}
+                          className={`rounded-xl border p-3 text-xs transition-colors ${
+                            notif.isRead
+                              ? 'border-slate-100 bg-slate-50/60 text-slate-600'
+                              : 'border-blue-200 bg-blue-50/50 text-slate-800 shadow-xs'
+                          }`}
+                        >
+                          <div className="flex items-start justify-between gap-2">
+                            <p className="font-bold text-slate-800">{notif.title}</p>
+                            {!notif.isRead && (
+                              <button
+                                type="button"
+                                onClick={() => handleMarkNotifRead(notif.id)}
+                                className="cursor-pointer text-[10px] font-semibold text-[#2563EB] hover:underline"
+                              >
+                                Đã xem
+                              </button>
+                            )}
+                          </div>
+                          <p className="mt-1 leading-relaxed text-slate-600">{notif.message}</p>
+                          {notif.pickupLocation && (
+                            <div className="mt-1.5 rounded-lg bg-white/80 p-2 font-medium text-emerald-700 border border-emerald-100">
+                              📍 Địa điểm: {notif.pickupLocation}
+                            </div>
+                          )}
+                          <p className="mt-1 text-[10px] text-slate-400">{notif.createdAt}</p>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
 
             <div className="flex items-center gap-2.5">
               <div className="flex h-9 w-9 items-center justify-center rounded-full bg-[#2563EB] text-sm font-bold text-white shadow-xs">
@@ -395,7 +490,7 @@ function StudentDashboardPage({ user, logoSrc = DEFAULT_LOGO_SRC, onLogout }) {
                     <FileText className="h-6 w-6" />
                   </div>
                   <div>
-                    <p className="text-2xl font-bold text-slate-800">3</p>
+                    <p className="text-2xl font-bold text-slate-800">{stats.totalSent}</p>
                     <p className="text-sm text-slate-500">Đơn đã gửi</p>
                   </div>
                 </div>
@@ -405,7 +500,7 @@ function StudentDashboardPage({ user, logoSrc = DEFAULT_LOGO_SRC, onLogout }) {
                     <Clock className="h-6 w-6" />
                   </div>
                   <div>
-                    <p className="text-2xl font-bold text-slate-800">1</p>
+                    <p className="text-2xl font-bold text-slate-800">{stats.inProgressCount}</p>
                     <p className="text-sm text-slate-500">Đơn đang xử lý</p>
                   </div>
                 </div>
@@ -415,7 +510,7 @@ function StudentDashboardPage({ user, logoSrc = DEFAULT_LOGO_SRC, onLogout }) {
                     <CheckCircle2 className="h-6 w-6" />
                   </div>
                   <div>
-                    <p className="text-2xl font-bold text-slate-800">12</p>
+                    <p className="text-2xl font-bold text-slate-800">{stats.completedCount}</p>
                     <p className="text-sm text-slate-500">Đơn đã hoàn thành</p>
                   </div>
                 </div>
@@ -495,10 +590,10 @@ function StudentDashboardPage({ user, logoSrc = DEFAULT_LOGO_SRC, onLogout }) {
       </div>
 
       {/* Modal xem nhanh chi tiết đơn */}
-      {selectedRequest && (
+      {selectedRequest && !viewFullDoc && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4 backdrop-blur-[1px]">
-          <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-xl">
-            <div className="flex items-start justify-between gap-3">
+          <div className="w-full max-w-lg rounded-2xl bg-white p-6 shadow-xl max-h-[90vh] overflow-y-auto">
+            <div className="flex items-start justify-between gap-3 border-b border-slate-100 pb-3">
               <div>
                 <p className="text-xs font-semibold text-[#2563EB]">{selectedRequest.id}</p>
                 <h3 className="mt-1 text-base font-bold text-slate-800">
@@ -515,31 +610,141 @@ function StudentDashboardPage({ user, logoSrc = DEFAULT_LOGO_SRC, onLogout }) {
               </button>
             </div>
 
-            <div className="mt-4 space-y-3 rounded-xl bg-slate-50 p-4 text-sm">
-              <div className="flex items-center justify-between">
-                <span className="text-slate-500">Trạng thái:</span>
+            <div className="mt-4 space-y-3.5 text-sm">
+              <div className="flex items-center justify-between rounded-xl bg-slate-50 p-3">
+                <span className="text-slate-500 font-medium">Trạng thái xử lý:</span>
                 <StatusBadge
-                  statusKey={selectedRequest.statusKey}
+                  statusKey={selectedRequest.status || selectedRequest.statusKey}
                   label={selectedRequest.statusLabel}
                 />
               </div>
-              <div className="flex items-center justify-between">
-                <span className="text-slate-500">Ngày tạo:</span>
-                <span className="font-medium text-slate-700">{selectedRequest.createdAt}</span>
+
+              {/* Thông báo trả kết quả từ Bộ phận Một cửa nếu đơn đã hoàn thành */}
+              {selectedRequest.status === 'completed' && (
+                <div className="rounded-xl border border-emerald-200 bg-emerald-50/80 p-3.5 text-xs text-emerald-900 space-y-1.5">
+                  <p className="font-bold flex items-center gap-1.5 text-emerald-800 text-sm">
+                    <CheckCircle2 className="h-4 w-4 text-emerald-600 shrink-0" />
+                    Hồ sơ đã được phê duyệt & đóng dấu ban hành!
+                  </p>
+                  <p className="text-slate-700">
+                    Địa điểm nhận kết quả bản cứng: <strong className="text-emerald-800">{selectedRequest.pickupLocation || 'Phòng 102 - Tòa nhà A (Bộ phận Một Cửa)'}</strong>
+                  </p>
+                  {selectedRequest.adminNote && (
+                    <p className="italic text-slate-600 bg-white/70 p-2 rounded-lg border border-emerald-100">
+                      Ghi chú: "{selectedRequest.adminNote}"
+                    </p>
+                  )}
+                </div>
+              )}
+
+              {/* Thông báo nếu GV đã duyệt nhưng Một cửa đang thụ lý đóng dấu */}
+              {selectedRequest.status === 'teacher_approved' && (
+                <div className="rounded-xl border border-indigo-200 bg-indigo-50/70 p-3.5 text-xs text-indigo-900 space-y-1">
+                  <p className="font-bold flex items-center gap-1.5 text-indigo-800">
+                    <Clock className="h-4 w-4 text-indigo-600 shrink-0" />
+                    Giáo viên chủ nhiệm đã duyệt & ký số
+                  </p>
+                  <p className="text-slate-600">
+                    Hồ sơ đã được chuyển tự động về Bộ phận Một Cửa để đối chiếu và đóng dấu số. Hệ thống sẽ gửi thông báo đến bạn ngay khi Một Cửa ban hành.
+                  </p>
+                </div>
+              )}
+
+              <div className="rounded-xl bg-slate-50 p-3.5 space-y-2 text-xs">
+                <div className="flex items-center justify-between">
+                  <span className="text-slate-500">Ngày tạo đơn:</span>
+                  <span className="font-medium text-slate-700">{selectedRequest.createdAt}</span>
+                </div>
+                <div>
+                  <span className="text-slate-500">Lý do xin cấp:</span>
+                  <p className="mt-1 font-medium text-slate-800">{selectedRequest.reason || selectedRequest.note}</p>
+                </div>
               </div>
-              <div>
-                <span className="text-slate-500">Ghi chú:</span>
-                <p className="mt-1 text-slate-700">{selectedRequest.note}</p>
+
+              {/* Nhật ký quy trình hồ sơ */}
+              {selectedRequest.logs && selectedRequest.logs.length > 0 && (
+                <div className="space-y-1.5 pt-1">
+                  <p className="text-xs font-bold text-slate-400 uppercase tracking-wider">Tiến trình giải quyết</p>
+                  <div className="space-y-1.5 max-h-36 overflow-y-auto">
+                    {selectedRequest.logs.map((log, index) => (
+                      <div key={index} className="flex items-start gap-2 rounded-lg border border-slate-100 bg-slate-50/80 p-2 text-xs">
+                        <span className="font-bold text-[#2563EB] shrink-0">{log.action}:</span>
+                        <div className="text-slate-600 min-w-0">
+                          <span>{log.actor} ({log.time})</span>
+                          {log.note && <span className="block text-[11px] italic text-slate-500 mt-0.5">"{log.note}"</span>}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div className="mt-5 flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setSelectedRequest(null)}
+                className="flex-1 cursor-pointer rounded-xl border border-slate-200 py-2.5 text-xs font-semibold text-slate-600 hover:bg-slate-50"
+              >
+                Đóng
+              </button>
+              {(selectedRequest.teacherSignature || selectedRequest.status === 'completed') && (
+                <button
+                  type="button"
+                  onClick={() => setViewFullDoc(true)}
+                  className="flex-1 cursor-pointer rounded-xl bg-[#2563EB] py-2.5 text-xs font-semibold text-white hover:bg-[#1D4ED8] shadow-sm"
+                >
+                  Xem văn bản có chữ ký & dấu
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL XEM VĂN BẢN ĐẦY ĐỦ CÓ CHỮ KÝ VÀ DẤU */}
+      {viewFullDoc && selectedRequest && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 p-4 backdrop-blur-[2px] overflow-y-auto">
+          <div className="w-full max-w-3xl rounded-2xl bg-white shadow-2xl overflow-hidden my-6">
+            <div className="flex items-center justify-between border-b border-slate-200 bg-slate-50 px-6 py-3.5">
+              <div className="flex items-center gap-2">
+                <FileText className="h-5 w-5 text-[#2563EB]" />
+                <h3 className="font-bold text-slate-800 text-sm">
+                  Văn bản chính thức có chữ ký số & con dấu - {selectedRequest.id}
+                </h3>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => window.print()}
+                  className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-100"
+                >
+                  In / Lưu PDF
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setViewFullDoc(false)}
+                  className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-200 hover:text-slate-700"
+                  aria-label="Đóng"
+                >
+                  <X className="h-5 w-5" />
+                </button>
               </div>
             </div>
 
-            <button
-              type="button"
-              onClick={() => setSelectedRequest(null)}
-              className="mt-5 w-full cursor-pointer rounded-xl bg-[#2563EB] py-2.5 text-sm font-semibold text-white hover:bg-[#1D4ED8]"
-            >
-              Đóng
-            </button>
+            <div className="p-4 sm:p-6 max-h-[80vh] overflow-y-auto bg-slate-100">
+              <OfficialDocumentView request={selectedRequest} />
+            </div>
+
+            <div className="border-t border-slate-200 bg-slate-50 px-6 py-3 text-right">
+              <button
+                type="button"
+                onClick={() => setViewFullDoc(false)}
+                className="rounded-xl bg-[#2563EB] px-5 py-2 text-xs font-semibold text-white hover:bg-blue-700"
+              >
+                Đóng văn bản
+              </button>
+            </div>
           </div>
         </div>
       )}

@@ -10,6 +10,7 @@ import {
   dispatchRequestByAdmin as dispatchMockRequest,
   rejectRequestByAdmin as rejectMockRequest,
   signAndApproveByTeacher as signMockRequest,
+  finalizeAndNotifyStudentByAdmin,
 } from '../components/mockRequestsStore';
 
 /**
@@ -150,7 +151,35 @@ export async function signAndApproveRequest(requestId, teacherSignature, teacher
     console.warn('Cập nhật Supabase lỗi:', err.message);
   }
 
-  signMockRequest(requestId, teacherSignature, teacherName, note);
+  signMockRequest(requestId, { name: teacherName }, teacherSignature);
+  return { success: true };
+}
+
+/**
+ * Cán bộ Quản lý Một cửa hoàn tất hồ sơ và thông báo qua web cho sinh viên
+ */
+export async function finalizeAndNotifyStudentRequest(requestId, adminName, pickupInfo, adminNote) {
+  try {
+    await supabase
+      .from('requests')
+      .update({
+        trang_thai: 'completed',
+        closed_at: new Date().toISOString(),
+      })
+      .eq('id', requestId);
+
+    await supabase.from('request_step_logs').insert([
+      {
+        request_id: requestId,
+        hanh_dong: 'Đóng dấu & Ban hành (Một cửa)',
+        ghi_chu: adminNote || `Cán bộ Một cửa (${adminName}) đã đóng dấu và hoàn tất đơn cho sinh viên.`,
+      },
+    ]);
+  } catch (err) {
+    console.warn('Cập nhật Supabase lỗi:', err.message);
+  }
+
+  finalizeAndNotifyStudentByAdmin(requestId, adminName, pickupInfo, adminNote);
   return { success: true };
 }
 
