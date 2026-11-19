@@ -15,6 +15,7 @@ import {
 } from 'lucide-react';
 import logoCdvm from '../assets/images/logocđvm.jpg';
 import { addStudentRequest } from './mockRequestsStore';
+import { submitRequest } from '../services/requestService';
 
 // Dữ liệu mô phỏng lấy từ API CMS của trường (lý do mặc định để trống theo yêu cầu)
 const getMockCmsData = (user) => ({
@@ -284,6 +285,7 @@ function StudentConfirmationForm({ onBack, user }) {
     };
 
     addStudentRequest(newRequestPayload);
+    submitRequest(newRequestPayload);
 
     alert(
       `Đã nộp đơn xác nhận thành công (Mã đơn: ${newRequestId})!\n\nDữ liệu đơn kèm chữ ký của bạn đã được chuyển tới Ban Tiếp nhận Một cửa (Admin) để thẩm định và phân phối tới Giảng viên/Phòng ban.`
