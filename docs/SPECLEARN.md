@@ -5,6 +5,7 @@
 |---|---|---|
 | 2026-11-12 | Quy trình lưu trong database, không hard-code | Mỗi thủ tục có đường đi riêng |
 | 2026-11-12 | Dùng AGENTS.md ở thư mục gốc làm Rules | Antigravity tự nạp |
+| 2026-11-19 | Commit luôn viết bằng tiếng Anh, chỉ push khi có lệnh người dùng | Quy ước chuẩn của dự án và kiểm soát bảo mật |
 
 ## Lỗi đã gặp
 | Vấn đề | Nguyên nhân | Cách sửa |

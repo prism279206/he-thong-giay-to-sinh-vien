@@ -77,8 +77,8 @@ Mỗi loại thủ tục có đường đi riêng (online, chụp ảnh giấy k
 
 **Git:**
 1. Làm việc và push thẳng lên `main`, không dùng nhánh phụ hay Pull Request.
-2. Commit nhỏ, thường xuyên, mỗi commit một việc, thông điệp rõ ràng (`feat:`, `fix:`, `chore:`, `docs:`).
-3. Trước khi bắt đầu làm: `git pull --rebase`. Trước khi push: `git pull --rebase` lần nữa, chạy `npm run dev` kiểm tra không lỗi rồi mới `git push`.
+2. Commit nhỏ, thường xuyên, mỗi commit một việc, thông điệp rõ ràng bằng tiếng Anh (`feat:`, `fix:`, `chore:`, `docs:`).
+3. Trước khi bắt đầu làm: `git pull --rebase`. Trước khi push: `git pull --rebase` lần nữa, chạy `npm run dev` kiểm tra không lỗi rồi mới `git push`. Chỉ push khi người dùng yêu cầu rõ ràng.
 4. Không bao giờ dùng `git push --force`, `git reset --hard` hoặc xóa lịch sử khi chưa hỏi người dùng.
 5. Chỉ commit file trong vùng của mình. Trước khi commit chạy `git status` và `git diff`, kiểm tra AI có sửa file ngoài phạm vi không.
 6. Gặp xung đột (conflict): dừng lại, báo người dùng, không tự chọn bên nào.
@@ -93,3 +93,4 @@ Mỗi loại thủ tục có đường đi riêng (online, chụp ảnh giấy k
 4. Giải thích ngắn gọn bằng tiếng Việt. Người dùng đang học React, nên giải thích lý do khi dùng khái niệm mới.
 5. Khi nhắc tới tính năng của công cụ hoặc thư viện có thể đã đổi, hãy kiểm tra tài liệu hiện hành thay vì tin vào trí nhớ.
 6. Phần RLS và hàm chuyển bước ảnh hưởng bảo mật: luôn nhắc người dùng nhờ người thật đọc lại trước khi merge.
+7. Tuyệt đối không tự ý chạy `git push` nếu người dùng chưa yêu cầu rõ ràng; mọi commit message luôn viết bằng tiếng Anh.
