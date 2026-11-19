@@ -1,10 +1,11 @@
 import { useState } from 'react';
-import { User, Lock, Eye, EyeOff, ShieldAlert } from 'lucide-react';
+import { User, Lock, Eye, EyeOff, ShieldAlert, HelpCircle, X, Info } from 'lucide-react';
+import { signIn } from '../services/authService';
 
 const SAVED_IDENTIFIER_KEY = 'vmh_saved_user';
 
 // Danh sách tài khoản thử nghiệm theo từng phân quyền (sau này nối Supabase Auth)
-const MOCK_ACCOUNTS = [
+const _MOCK_ACCOUNTS = [
     {
         code: '24123456',
         email: 'sinhvien@caodangvietmyhanoi.edu.vn',
@@ -122,8 +123,9 @@ function LoginPage({ logoSrc = DEFAULT_LOGO_SRC, onLoginSuccess }) {
     );
     const [error, setError] = useState('');
     const [isLoading, setIsLoading] = useState(false);
+    const [showForgotModal, setShowForgotModal] = useState(false);
 
-    const handleSubmit = (e) => {
+    const handleSubmit = async (e) => {
         e.preventDefault();
         setError('');
 
@@ -135,33 +137,36 @@ function LoginPage({ logoSrc = DEFAULT_LOGO_SRC, onLoginSuccess }) {
 
         setIsLoading(true);
 
-        // Tạm dùng dữ liệu giả (mock) trong khi chờ authService từ phía Supabase
-        setTimeout(() => {
-            setIsLoading(false);
+        const res = await signIn(trimmedIdentifier, password);
+        setIsLoading(false);
 
-            if (rememberMe) {
-                localStorage.setItem(SAVED_IDENTIFIER_KEY, trimmedIdentifier);
-            } else {
-                localStorage.removeItem(SAVED_IDENTIFIER_KEY);
+        if (res.error) {
+            setError(res.error);
+            return;
+        }
+
+        if (rememberMe) {
+            localStorage.setItem(SAVED_IDENTIFIER_KEY, trimmedIdentifier);
+        } else {
+            localStorage.removeItem(SAVED_IDENTIFIER_KEY);
+        }
+
+        if (res.data?.profile) {
+            const prof = res.data.profile;
+            const mappedUser = {
+                id: prof.id,
+                email: prof.email,
+                fullName: prof.ho_ten || prof.full_name || 'Người dùng',
+                studentCode: prof.ma_sinh_vien || prof.student_code || '',
+                role: prof.role === 'staff' ? 'teacher' : (prof.role || 'student'),
+                className: prof.lop || prof.class_name || '',
+                faculty: prof.khoa || prof.faculty || '',
+                major: prof.nganh || prof.major || '',
+            };
+            if (onLoginSuccess) {
+                onLoginSuccess(mappedUser);
             }
-
-            const matchedAccount = MOCK_ACCOUNTS.find(
-                (acc) =>
-                    (acc.code.toLowerCase() === trimmedIdentifier.toLowerCase() ||
-                        acc.email.toLowerCase() === trimmedIdentifier.toLowerCase()) &&
-                    acc.password === password
-            );
-
-            if (matchedAccount) {
-                if (onLoginSuccess) {
-                    onLoginSuccess(matchedAccount);
-                } else {
-                    alert('Đăng nhập thành công! (Đang dùng tài khoản ảo)');
-                }
-            } else {
-                setError('Mã đăng nhập, email hoặc mật khẩu không chính xác.');
-            }
-        }, 500);
+        }
     };
 
     return (
@@ -261,16 +266,24 @@ function LoginPage({ logoSrc = DEFAULT_LOGO_SRC, onLoginSuccess }) {
                             </div>
                         </div>
 
-                        <div className="flex items-center pt-0.5">
-                            <label className="inline-flex cursor-pointer items-center gap-2.5 select-none">
+                        <div className="flex items-center justify-between pt-0.5 text-xs sm:text-sm">
+                            <label className="inline-flex cursor-pointer items-center gap-2 select-none text-slate-600">
                                 <input
                                     type="checkbox"
                                     checked={rememberMe}
                                     onChange={(e) => setRememberMe(e.target.checked)}
                                     className="h-4 w-4 cursor-pointer rounded border-slate-300 text-[#1D63EB] focus:ring-[#1D63EB]"
                                 />
-                                <span className="text-sm text-slate-600">Lưu trạng thái đăng nhập</span>
+                                <span>Ghi nhớ</span>
                             </label>
+
+                            <button
+                                type="button"
+                                onClick={() => setShowForgotModal(true)}
+                                className="font-medium text-[#1D63EB] hover:underline cursor-pointer"
+                            >
+                                Quên mật khẩu?
+                            </button>
                         </div>
 
                         <button
@@ -292,24 +305,48 @@ function LoginPage({ logoSrc = DEFAULT_LOGO_SRC, onLoginSuccess }) {
                                 <span className="text-[11px] font-medium text-slate-400">Chọn nhanh tài khoản thử nghiệm</span>
                                 <div className="h-px flex-1 bg-slate-200" />
                             </div>
-                            <div className="grid grid-cols-3 gap-1.5 text-center">
+                            <div className="grid grid-cols-2 gap-1.5 text-center sm:grid-cols-5">
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        setIdentifier('61112420189');
+                                        setPassword('123456');
+                                    }}
+                                    className="rounded-lg border border-blue-200 bg-blue-50/60 py-1.5 px-1.5 text-[11px] font-semibold text-blue-800 hover:bg-blue-100 transition-colors"
+                                    title="Sinh viên Nguyễn Văn Tiến (Mã sinh viên)"
+                                >
+                                    SV Tiến (Mã)
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        setIdentifier('tien12420189@caodangvietmyhanoi.edu.vn');
+                                        setPassword('123456');
+                                    }}
+                                    className="rounded-lg border border-blue-200 bg-blue-50/60 py-1.5 px-1.5 text-[11px] font-semibold text-blue-800 hover:bg-blue-100 transition-colors"
+                                    title="Sinh viên Nguyễn Văn Tiến (Email trường)"
+                                >
+                                    SV Tiến (Email)
+                                </button>
                                 <button
                                     type="button"
                                     onClick={() => {
                                         setIdentifier('24123456');
                                         setPassword('123456');
                                     }}
-                                    className="rounded-lg border border-slate-200 bg-slate-50 py-1.5 px-2 text-[11px] font-medium text-slate-600 hover:bg-blue-50 hover:text-blue-700 hover:border-blue-200 transition-colors"
+                                    className="rounded-lg border border-slate-200 bg-slate-50 py-1.5 px-1.5 text-[11px] font-medium text-slate-600 hover:bg-blue-50 hover:text-blue-700 transition-colors"
+                                    title="Sinh viên Trần Văn Minh"
                                 >
-                                    Sinh viên
+                                    SV Minh
                                 </button>
                                 <button
                                     type="button"
                                     onClick={() => {
-                                        setIdentifier('GV001');
+                                        setIdentifier('huong.do1@caodangvietmy.edu.vn');
                                         setPassword('123456');
                                     }}
-                                    className="rounded-lg border border-slate-200 bg-slate-50 py-1.5 px-2 text-[11px] font-medium text-slate-600 hover:bg-blue-50 hover:text-blue-700 hover:border-blue-200 transition-colors"
+                                    className="rounded-lg border border-slate-200 bg-slate-50 py-1.5 px-1.5 text-[11px] font-medium text-slate-600 hover:bg-blue-50 hover:text-blue-700 transition-colors"
+                                    title="Giảng viên Đỗ Thị Hường"
                                 >
                                     Giảng viên
                                 </button>
@@ -319,15 +356,75 @@ function LoginPage({ logoSrc = DEFAULT_LOGO_SRC, onLoginSuccess }) {
                                         setIdentifier('QL001');
                                         setPassword('123456');
                                     }}
-                                    className="rounded-lg border border-amber-200 bg-amber-50/70 py-1.5 px-2 text-[11px] font-semibold text-amber-800 hover:bg-amber-100 transition-colors"
+                                    className="rounded-lg border border-amber-200 bg-amber-50/70 py-1.5 px-1.5 text-[11px] font-semibold text-amber-800 hover:bg-amber-100 transition-colors"
+                                    title="Cán bộ Một cửa / Admin"
                                 >
-                                    Quản lý (Admin)
+                                    Một cửa
                                 </button>
                             </div>
                         </div>
                     </form>
                 </div>
             </main>
+
+            {/* Modal hướng dẫn khi quên mật khẩu */}
+            {showForgotModal && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/50 p-4 backdrop-blur-[2px]">
+                    <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl">
+                        <div className="flex items-start justify-between border-b border-slate-100 pb-3">
+                            <div className="flex items-center gap-2 text-slate-800">
+                                <HelpCircle className="h-5 w-5 text-[#2563EB]" />
+                                <h3 className="font-bold text-base">Hướng dẫn cấp lại mật khẩu</h3>
+                            </div>
+                            <button
+                                type="button"
+                                onClick={() => setShowForgotModal(false)}
+                                className="rounded-lg p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-600 cursor-pointer"
+                            >
+                                <X className="h-5 w-5" />
+                            </button>
+                        </div>
+
+                        <div className="mt-4 space-y-3 text-xs sm:text-sm text-slate-600">
+                            <div className="rounded-xl border border-blue-100 bg-blue-50/70 p-3.5 text-blue-900">
+                                <p className="font-semibold flex items-center gap-1.5">
+                                    <Info className="h-4 w-4 text-[#2563EB] shrink-0" />
+                                    Quy định bảo mật của nhà trường:
+                                </p>
+                                <p className="mt-1 text-xs text-blue-800 leading-relaxed">
+                                    Để bảo vệ hồ sơ và dữ liệu cá nhân của sinh viên, hệ thống <strong>không cho phép tự cấp lại mật khẩu qua email</strong>.
+                                </p>
+                            </div>
+
+                            <p className="leading-relaxed">
+                                Sinh viên hoặc Cán bộ quên mật khẩu vui lòng thực hiện một trong các cách sau:
+                            </p>
+
+                            <ul className="list-disc pl-5 space-y-1.5 text-xs text-slate-700">
+                                <li>
+                                    <strong>Cách 1:</strong> Liên hệ trực tiếp <strong>Bộ phận Một cửa / Phòng Đào tạo (P.102)</strong> trong giờ hành chính để cán bộ xác minh CCCD/thẻ sinh viên và đặt lại mật khẩu.
+                                </li>
+                                <li>
+                                    <strong>Cách 2:</strong> Báo với <strong>Giáo viên chủ nhiệm (GVCN)</strong> của lớp để GVCN gửi yêu cầu đặt lại mật khẩu cho cán bộ quản trị.
+                                </li>
+                                <li>
+                                    <strong>Mật khẩu mặc định sau khi được cấp lại:</strong> <code className="bg-slate-100 px-1.5 py-0.5 rounded font-mono font-bold text-blue-700">123456</code>.
+                                </li>
+                            </ul>
+                        </div>
+
+                        <div className="mt-5 border-t border-slate-100 pt-3 flex justify-end">
+                            <button
+                                type="button"
+                                onClick={() => setShowForgotModal(false)}
+                                className="rounded-xl bg-[#2563EB] px-5 py-2 text-xs font-semibold text-white hover:bg-blue-700 cursor-pointer"
+                            >
+                                Đã hiểu
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }
