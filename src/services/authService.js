@@ -14,20 +14,56 @@ import {
 const DEFAULT_PASSWORD = '123456';
 
 /**
- * Phân tích và chuẩn hóa chuỗi đăng nhập
- * Trả về loại đầu vào: 'email' hoặc 'student_code'
+ * Phân tích và kiểm tra tính hợp lệ của chuỗi đăng nhập
+ * Trả về: { isValid: boolean, type?: 'email' | 'student_code' | 'staff_code', value?: string, error?: string }
  */
 export function parseLoginIdentifier(input) {
-  const clean = (input || '').trim().toLowerCase();
-  if (clean.includes('@')) {
-    return { type: 'email', value: clean };
+  const clean = (input || '').trim();
+  const lower = clean.toLowerCase();
+
+  if (!clean) {
+    return { isValid: false, error: 'Vui lòng nhập Email trường hoặc Mã sinh viên/cán bộ.' };
   }
-  return { type: 'student_code', value: clean };
+
+  // 1. Trường hợp người dùng nhập Email
+  if (clean.includes('@')) {
+    if (!lower.endsWith('@caodangvietmyhanoi.edu.vn') && !lower.endsWith('@caodangvietmy.edu.vn')) {
+      return {
+        isValid: false,
+        error: 'Email không hợp lệ. Vui lòng sử dụng email do trường cấp (đuôi @caodangvietmyhanoi.edu.vn hoặc @caodangvietmy.edu.vn).',
+      };
+    }
+    return { isValid: true, type: 'email', value: lower };
+  }
+
+  // 2. Trường hợp là Mã cán bộ / Giảng viên (ví dụ: QL001, GV001, AD01...)
+  if (/^(ql|gv|cb|ad)\d+$/i.test(clean)) {
+    return { isValid: true, type: 'staff_code', value: clean.toUpperCase() };
+  }
+
+  // 3. Trường hợp là Mã sinh viên (chỉ gồm các chữ số độ dài từ 6 đến 12 số, hoặc tiền tố SV + chữ số)
+  if (/^\d{6,12}$/.test(clean) || /^sv\d+$/i.test(clean)) {
+    return { isValid: true, type: 'student_code', value: clean };
+  }
+
+  // 4. Nếu người dùng nhập dạng chữ + số (như huy12420, tien12420189) mà KHÔNG có đuôi @...
+  if (/^[a-zA-Z]+\d+$/.test(clean)) {
+    return {
+      isValid: false,
+      error: `Định dạng không hợp lệ. Nếu bạn muốn đăng nhập bằng email sinh viên "${clean}", vui lòng điền đầy đủ đuôi "@caodangvietmyhanoi.edu.vn". Nếu dùng mã sinh viên, vui lòng chỉ nhập dãy số (ví dụ: 61112420189).`,
+    };
+  }
+
+  // 5. Các chuỗi gõ bừa bãi khác (ví dụ abc, test, 123...)
+  return {
+    isValid: false,
+    error: 'Mã đăng nhập không đúng định dạng. Vui lòng nhập Mã sinh viên (dãy số), Mã cán bộ (QL..., GV...) hoặc Email trường cấp.',
+  };
 }
 
 /**
  * Đăng nhập vào hệ thống
- * @param {string} identifier Email hoặc Mã sinh viên
+ * @param {string} identifier Email hoặc Mã sinh viên/cán bộ
  * @param {string} password Mật khẩu
  * @returns {Promise<{ data: { user: object, profile: object } | null, error: string | null }>}
  */
@@ -36,27 +72,36 @@ export async function signIn(identifier, password) {
   const cleanPass = (password || '').trim();
 
   if (!cleanId) {
-    return { data: null, error: 'Vui lòng nhập Email trường hoặc Mã sinh viên.' };
+    return { data: null, error: 'Vui lòng nhập Email trường hoặc Mã sinh viên/cán bộ.' };
   }
   if (!cleanPass) {
     return { data: null, error: 'Vui lòng nhập mật khẩu.' };
   }
 
-  const { type, value } = parseLoginIdentifier(cleanId);
+  // Kiểm tra chặt chẽ định dạng đầu vào trước khi xử lý
+  const parsed = parseLoginIdentifier(cleanId);
+  if (!parsed.isValid) {
+    return { data: null, error: parsed.error };
+  }
+
+  const { type, value } = parsed;
   let targetEmail = value;
   let studentCmsData = null;
 
-  // 1. Nếu người dùng nhập Mã sinh viên -> Lấy hồ sơ từ CMS để sinh ra đúng email trường
+  // 1. Nếu người dùng nhập Mã sinh viên (dãy số) -> Tra cứu hồ sơ CMS
   if (type === 'student_code') {
     const cmsResult = await getStudentProfile(value);
     if (cmsResult.error) {
       return { data: null, error: cmsResult.error };
     }
+    if (!cmsResult.data) {
+      return { data: null, error: `Không tìm thấy hồ sơ sinh viên với mã: "${value}".` };
+    }
     studentCmsData = cmsResult.data;
     targetEmail = buildExpectedStudentEmail(studentCmsData.hoTen, studentCmsData.maSinhVien);
   }
 
-  // 2. Nếu người dùng nhập Email sinh viên -> Đối chiếu tên và số
+  // 2. Nếu người dùng nhập Email sinh viên -> Đối chiếu tên và số với hồ sơ
   if (type === 'email' && value.endsWith('@caodangvietmyhanoi.edu.vn')) {
     const username = value.split('@')[0];
     const match = username.match(/^([a-z]+)(\d+)$/);
@@ -65,14 +110,26 @@ export async function signIn(identifier, password) {
       const codeSuffix = match[2];
       // Tra cứu sinh viên theo đuôi mã hoặc mã sinh viên
       const cmsResult = await getStudentProfile(codeSuffix, { expectedName: emailName });
-      if (cmsResult.data) {
-        studentCmsData = cmsResult.data;
-        const verifyRes = verifyStudentEmailMatch(value, studentCmsData);
-        if (!verifyRes.isValid) {
-          return { data: null, error: verifyRes.message };
-        }
-      } else if (cmsResult.error) {
+      if (cmsResult.error) {
         return { data: null, error: cmsResult.error };
+      }
+      if (!cmsResult.data) {
+        return { data: null, error: `Không tìm thấy hồ sơ sinh viên tương ứng với email "${value}".` };
+      }
+      studentCmsData = cmsResult.data;
+      const verifyRes = verifyStudentEmailMatch(value, studentCmsData);
+      if (!verifyRes.isValid) {
+        return { data: null, error: verifyRes.message };
+      }
+    } else {
+      // Nếu email không theo định dạng [Tên][Mã] (kiểm tra xem có phải email cán bộ/giảng viên không)
+      const isKnownStaffEmail =
+        value.includes('ql') || value.includes('admin') || value.includes('huong.do') || value.includes('maiant');
+      if (!isKnownStaffEmail) {
+        return {
+          data: null,
+          error: 'Định dạng email sinh viên không hợp lệ. Email sinh viên phải có dạng [Tên][Mã_số]@caodangvietmyhanoi.edu.vn (ví dụ: tien12420189@caodangvietmyhanoi.edu.vn).',
+        };
       }
     }
   }
@@ -113,15 +170,9 @@ export async function signIn(identifier, password) {
   // 4. Chế độ dự phòng khi tài khoản chưa được tạo trên Supabase hoặc đang chạy thử nghiệm
   // Mật khẩu mặc định là 123456
   if (cleanPass === DEFAULT_PASSWORD || cleanPass === '123456') {
-    // Nếu là sinh viên
-    if (studentCmsData || type === 'student_code') {
-      const student = studentCmsData || {
-        hoTen: 'Nguyễn Văn Tiến',
-        maSinhVien: cleanId,
-        lop: 'Cao đẳng CNTT K24',
-        khoa: 'Khoa Công nghệ',
-        nganh: 'Công nghệ thông tin',
-      };
+    // Nếu là sinh viên: BẮT BUỘC PHẢI CÓ HỒ SƠ SINH VIÊN ĐÃ ĐƯỢC XÁC THỰC THÀNH CÔNG TỪ CMS
+    if (studentCmsData) {
+      const student = studentCmsData;
       return {
         data: {
           user: { id: `mock-${student.maSinhVien}`, email: targetEmail },
@@ -130,9 +181,9 @@ export async function signIn(identifier, password) {
             email: targetEmail,
             ma_sinh_vien: student.maSinhVien,
             ho_ten: student.hoTen,
-            lop: student.lop,
-            khoa: student.khoa,
-            nganh: student.nganh,
+            lop: student.lop || 'Cao đẳng CNTT K24',
+            khoa: student.khoa || 'Khoa Công nghệ',
+            nganh: student.nganh || 'Công nghệ thông tin',
             role: 'student',
           },
         },
@@ -140,14 +191,18 @@ export async function signIn(identifier, password) {
       };
     }
 
-    // Nếu là Giảng viên (ví dụ: huong.do1@...)
-    if (targetEmail.includes('huong.do') || targetEmail.includes('maiant') || targetEmail.includes('gv')) {
+    // Nếu là Giảng viên (mã GV... hoặc email trường của giảng viên)
+    if (
+      (type === 'staff_code' && value.startsWith('GV')) ||
+      targetEmail.includes('huong.do') ||
+      targetEmail.includes('maiant')
+    ) {
       return {
         data: {
-          user: { id: 'mock-gv001', email: targetEmail },
+          user: { id: 'mock-gv001', email: targetEmail.includes('@') ? targetEmail : 'maiant@caodangvietmyhanoi.edu.vn' },
           profile: {
             id: 'mock-gv001',
-            email: targetEmail,
+            email: targetEmail.includes('@') ? targetEmail : 'maiant@caodangvietmyhanoi.edu.vn',
             ho_ten: 'ThS. Nguyễn Thị Mai',
             role: 'staff',
             khoa: 'Khoa Công nghệ thông tin',
@@ -157,14 +212,18 @@ export async function signIn(identifier, password) {
       };
     }
 
-    // Nếu là Cán bộ Quản lý Một cửa (ví dụ: ql001@...)
-    if (targetEmail.includes('ql001') || targetEmail.includes('admin')) {
+    // Nếu là Cán bộ Quản lý Một cửa (mã QL... hoặc email ql001@...)
+    if (
+      (type === 'staff_code' && (value.startsWith('QL') || value.startsWith('AD'))) ||
+      targetEmail.includes('ql001') ||
+      targetEmail.includes('admin')
+    ) {
       return {
         data: {
-          user: { id: 'mock-ql001', email: targetEmail },
+          user: { id: 'mock-ql001', email: targetEmail.includes('@') ? targetEmail : 'ql001@caodangvietmyhanoi.edu.vn' },
           profile: {
             id: 'mock-ql001',
-            email: targetEmail,
+            email: targetEmail.includes('@') ? targetEmail : 'ql001@caodangvietmyhanoi.edu.vn',
             ho_ten: 'Cán bộ Tiếp nhận Một cửa',
             role: 'admin',
             phong_ban: 'Phòng Đào tạo & Quản lý Khoa học',

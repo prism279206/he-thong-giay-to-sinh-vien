@@ -5,11 +5,14 @@
 
 const CMS_API_BASE_URL =
   (typeof import.meta !== 'undefined' && import.meta.env?.VITE_CMS_API_BASE_URL) ||
+  (typeof process !== 'undefined' && process.env?.VITE_CMS_API_BASE_URL) ||
   'https://hanoi.vietmycollege.com/api/integrations/student-profile';
 
 const CMS_BEARER_TOKEN =
   (typeof import.meta !== 'undefined' &&
     (import.meta.env?.VITE_VIETMY_API_KEY || import.meta.env?.VITE_CMS_BEARER_TOKEN)) ||
+  (typeof process !== 'undefined' &&
+    (process.env?.VITE_VIETMY_API_KEY || process.env?.VITE_CMS_BEARER_TOKEN)) ||
   '';
 
 /**
@@ -217,7 +220,7 @@ export function verifyStudentEmailMatch(inputEmail, studentProfile) {
  * @param {object} [options] Tùy chọn bổ sung (ví dụ: expectedName)
  * @returns {Promise<{ data: object|null, error: string|null, isMock: boolean }>}
  */
-export async function getStudentProfile(studentCode, options = {}) {
+export async function getStudentProfile(studentCode, _options = {}) {
   const cleanCode = (studentCode || '').trim();
   if (!cleanCode) {
     return { data: null, error: 'Mã sinh viên không được để trống.', isMock: false };
@@ -226,7 +229,8 @@ export async function getStudentProfile(studentCode, options = {}) {
   // 1. Nếu đã có mã khóa (Bearer Token) cấu hình trong .env -> Gọi API thật của trường
   if (CMS_BEARER_TOKEN && CMS_BEARER_TOKEN !== '$TOKEN') {
     try {
-      const response = await fetch(`${CMS_API_BASE_URL}/students/${cleanCode}`, {
+      // Gọi API trường với mã sinh viên
+      let response = await fetch(`${CMS_API_BASE_URL}/students/${cleanCode}`, {
         method: 'GET',
         headers: {
           Authorization: `Bearer ${CMS_BEARER_TOKEN}`,
@@ -234,24 +238,57 @@ export async function getStudentProfile(studentCode, options = {}) {
         },
       });
 
-      if (response.ok) {
-        const json = await response.json();
-        return { data: json.data, error: null, isMock: false };
+      // Nếu mã là đuôi 8 chữ số (từ email) và chưa tìm thấy -> thử tra cứu tiếp bằng mã 11 số (thêm tiền tố 611)
+      if (response.status === 404 && cleanCode.length === 8 && !cleanCode.startsWith('611')) {
+        const fullCode = `611${cleanCode}`;
+        const retryResponse = await fetch(`${CMS_API_BASE_URL}/students/${fullCode}`, {
+          method: 'GET',
+          headers: {
+            Authorization: `Bearer ${CMS_BEARER_TOKEN}`,
+            Accept: 'application/json',
+          },
+        });
+        if (retryResponse.ok) {
+          response = retryResponse;
+        }
       }
 
-      if (response.status === 404) {
-        return { data: null, error: `Không tìm thấy hồ sơ sinh viên với mã: ${cleanCode}`, isMock: false };
-      }
+      const contentType = response.headers.get('content-type') || '';
 
-      if (response.status === 401) {
+      // Trường hợp máy chủ trường trả về JSON chuẩn
+      if (contentType.includes('application/json')) {
+        if (response.ok) {
+          const json = await response.json();
+          if (json.data) {
+            return { data: json.data, error: null, isMock: false };
+          }
+        }
+
+        if (response.status === 404) {
+          // Nếu API trường hoạt động và trả về không tìm thấy
+          // Kiểm tra xem có trong danh sách mock dự phòng không
+          const foundMock = findMockStudent(cleanCode);
+          if (foundMock) {
+            return { data: foundMock, error: null, isMock: true };
+          }
+          return { data: null, error: `Không tìm thấy hồ sơ sinh viên với mã: "${cleanCode}" trên hệ thống nhà trường.`, isMock: false };
+        }
+
+        if (response.status === 401) {
+          return {
+            data: null,
+            error: 'Khóa API không hợp lệ hoặc đã hết hạn. Vui lòng kiểm tra lại mã khóa.',
+            isMock: false,
+          };
+        }
+      } else {
+        // Máy chủ trường trả về HTML 404 (chưa kích hoạt route API trên domain)
         return {
           data: null,
-          error: 'Khóa API không hợp lệ hoặc đã hết hạn. Vui lòng kiểm tra lại mã khóa.',
+          error: `Máy chủ API của trường (${CMS_API_BASE_URL}) hiện đang trả về lỗi 404 (The page could not be found). Tuyến API này chưa được phía kỹ thuật của trường kích hoạt trên hệ thống thật.`,
           isMock: false,
         };
       }
-
-      return { data: null, error: `Lỗi kết nối máy chủ trường (Mã lỗi: ${response.status})`, isMock: false };
     } catch (err) {
       console.warn('Không thể kết nối đến máy chủ trường, tự động chuyển sang chế độ dự phòng:', err.message);
     }
@@ -267,30 +304,11 @@ export async function getStudentProfile(studentCode, options = {}) {
     };
   }
 
-  // Nếu là một sinh viên mới bất kỳ do người dùng gõ vào để test
-  const defaultName = options.expectedName
-    ? `Nguyễn Văn ${options.expectedName.charAt(0).toUpperCase() + options.expectedName.slice(1)}`
-    : `Sinh viên ${cleanCode.slice(-4) || 'Việt Mỹ'}`;
-
-  const generatedMock = {
-    hoTen: defaultName,
-    maSinhVien: cleanCode.length === 8 ? `611${cleanCode}` : cleanCode,
-    sdt: '0988000000',
-    cccd: '001204000000',
-    ngayCapCccd: '',
-    ngaySinh: '2006-01-01',
-    noiSinh: 'Hà Nội',
-    khoaHoc: '2024-2027',
-    lop: 'Cao đẳng CNTT K24',
-    khoa: 'Khoa Công nghệ thông tin',
-    nganh: 'Công nghệ thông tin',
-    updatedAt: new Date().toISOString(),
-  };
-
+  // Nếu không tìm thấy hồ sơ sinh viên hợp lệ -> Báo lỗi từ chối, tuyệt đối không tự bịa sinh viên ảo
   return {
-    data: generatedMock,
-    error: null,
-    isMock: true,
+    data: null,
+    error: `Không tìm thấy hồ sơ sinh viên với mã: "${cleanCode}". Vui lòng kiểm tra lại chính xác mã sinh viên của trường.`,
+    isMock: false,
   };
 }
 
