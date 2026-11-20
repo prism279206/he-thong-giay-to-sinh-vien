@@ -37,9 +37,14 @@ export function parseLoginIdentifier(input) {
     return { isValid: true, type: 'email', value: lower };
   }
 
-  // 2. Trường hợp là Mã cán bộ / Giảng viên (ví dụ: QL001, GV001, AD01, admin...)
-  if (/^(ql|gv|cb|ad)\d+$/i.test(clean) || lower === 'admin') {
-    return { isValid: true, type: 'staff_code', value: clean.toUpperCase() };
+  // 2. Trường hợp là Mã cán bộ / Giảng viên (ví dụ: admincdvmhn, gvcn, QL001, GV001, AD01, admin...)
+  if (
+    /^(ql|gv|cb|ad)\d+$/i.test(clean) ||
+    lower === 'admin' ||
+    lower === 'admincdvmhn' ||
+    lower === 'gvcn'
+  ) {
+    return { isValid: true, type: 'staff_code', value: lower };
   }
 
   // 3. Trường hợp là Mã sinh viên (chỉ gồm các chữ số độ dài từ 6 đến 12 số, hoặc tiền tố SV + chữ số)
@@ -91,11 +96,12 @@ export async function signIn(identifier, password) {
 
   // 1. Nếu người dùng nhập Mã cán bộ / Giảng viên -> Chuẩn hóa sang Email trường tương ứng
   if (type === 'staff_code') {
-    if (value === 'QL001' || value === 'ADMIN') {
-      targetEmail = 'ql001@caodangvietmyhanoi.edu.vn';
-    } else if (value === 'GV001') {
-      targetEmail = 'maiant@caodangvietmyhanoi.edu.vn';
-    } else if (value === 'GV002') {
+    const valLower = value.toLowerCase();
+    if (valLower === 'admincdvmhn' || valLower === 'admin' || valLower === 'ql001') {
+      targetEmail = 'admin@caodangvietmyhanoi.edu.vn';
+    } else if (valLower === 'gvcn' || valLower === 'gv001') {
+      targetEmail = 'gvcn@caodangvietmyhanoi.edu.vn';
+    } else if (valLower === 'gv002') {
       targetEmail = 'huong.do1@caodangvietmy.edu.vn';
     }
   }
@@ -136,7 +142,11 @@ export async function signIn(identifier, password) {
     } else {
       // Nếu email không theo định dạng [Tên][Mã] (kiểm tra xem có phải email cán bộ/giảng viên không)
       const isKnownStaffEmail =
-        value.includes('ql') || value.includes('admin') || value.includes('huong.do') || value.includes('maiant');
+        value.includes('admin') ||
+        value.includes('gvcn') ||
+        value.includes('ql') ||
+        value.includes('huong.do') ||
+        value.includes('maiant');
       if (!isKnownStaffEmail) {
         return {
           data: null,
@@ -182,21 +192,23 @@ export async function signIn(identifier, password) {
   // 4. Chế độ dự phòng khi tài khoản chưa được tạo trên Supabase hoặc đang chạy thử nghiệm
   // Mật khẩu mặc định là 123456
   if (cleanPass === DEFAULT_PASSWORD || cleanPass === '123456') {
-    // 4.1 Nếu là Cán bộ Quản lý Một cửa (mã QL... hoặc email ql001@... hoặc admin)
+    // 4.1 Nếu là Cán bộ Quản lý Một cửa (mã admincdvmhn, admin, QL001 hoặc email admin@...)
+    const valLower = (value || '').toLowerCase();
     if (
-      (type === 'staff_code' && (value.startsWith('QL') || value.startsWith('AD') || value === 'ADMIN')) ||
-      targetEmail.includes('ql001') ||
-      targetEmail.includes('admin')
+      (type === 'staff_code' && (valLower === 'admincdvmhn' || valLower === 'admin' || valLower.startsWith('ql') || valLower.startsWith('ad'))) ||
+      targetEmail.includes('admin') ||
+      targetEmail.includes('ql001')
     ) {
-      const adminEmail = targetEmail.includes('@') ? targetEmail : 'ql001@caodangvietmyhanoi.edu.vn';
+      const adminEmail = targetEmail.includes('@') ? targetEmail : 'admin@caodangvietmyhanoi.edu.vn';
       return {
         data: {
-          user: { id: 'mock-ql001', email: adminEmail, role: 'admin' },
+          user: { id: 'mock-admin', email: adminEmail, role: 'admin', code: 'admincdvmhn' },
           profile: {
-            id: 'mock-ql001',
+            id: 'mock-admin',
             email: adminEmail,
-            ho_ten: 'Cán bộ Tiếp nhận Một cửa',
+            ho_ten: 'Cán bộ Quản trị Một cửa',
             role: 'admin',
+            ma_sinh_vien: 'admincdvmhn',
             phong_ban: 'Phòng Đào tạo & Quản lý Khoa học',
           },
         },
@@ -204,22 +216,25 @@ export async function signIn(identifier, password) {
       };
     }
 
-    // 4.2 Nếu là Giảng viên (mã GV... hoặc email trường của giảng viên)
+    // 4.2 Nếu là Giáo viên chủ nhiệm (mã gvcn, gv001 hoặc email gvcn@...)
     if (
-      (type === 'staff_code' && value.startsWith('GV')) ||
-      targetEmail.includes('huong.do') ||
-      targetEmail.includes('maiant')
+      (type === 'staff_code' && (valLower === 'gvcn' || valLower.startsWith('gv'))) ||
+      targetEmail.includes('gvcn') ||
+      targetEmail.includes('maiant') ||
+      targetEmail.includes('huong.do')
     ) {
-      const gvEmail = targetEmail.includes('@') ? targetEmail : 'maiant@caodangvietmyhanoi.edu.vn';
+      const gvEmail = targetEmail.includes('@') ? targetEmail : 'gvcn@caodangvietmyhanoi.edu.vn';
       return {
         data: {
-          user: { id: 'mock-gv001', email: gvEmail, role: 'staff' },
+          user: { id: 'mock-gvcn', email: gvEmail, role: 'staff', code: 'gvcn' },
           profile: {
-            id: 'mock-gv001',
+            id: 'mock-gvcn',
             email: gvEmail,
-            ho_ten: 'ThS. Nguyễn Thị Mai',
+            ho_ten: 'ThS. Nguyễn Thị Mai (GVCN)',
             role: 'staff',
+            ma_sinh_vien: 'gvcn',
             khoa: 'Khoa Công nghệ thông tin',
+            lop: 'CD-CNTT-K25A',
           },
         },
         error: null,

@@ -1623,7 +1623,7 @@ export default function AdminDashboardPage({ user, logoSrc = DEFAULT_LOGO_SRC, o
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
                 <div>
                   <span className="text-slate-500">Mã quản lý:</span>{' '}
-                  <span className="font-semibold text-slate-800">{user?.code || 'QL001'}</span>
+                  <span className="font-semibold text-slate-800">{user?.code || 'admincdvmhn'}</span>
                 </div>
                 <div>
                   <span className="text-slate-500">Họ và tên:</span>{' '}
@@ -1631,7 +1631,7 @@ export default function AdminDashboardPage({ user, logoSrc = DEFAULT_LOGO_SRC, o
                 </div>
                 <div>
                   <span className="text-slate-500">Email:</span>{' '}
-                  <span className="font-semibold text-slate-800">{user?.email || 'ql001@caodangvietmyhanoi.edu.vn'}</span>
+                  <span className="font-semibold text-slate-800">{user?.email || 'admin@caodangvietmyhanoi.edu.vn'}</span>
                 </div>
                 <div>
                   <span className="text-slate-500">Bộ phận:</span>{' '}

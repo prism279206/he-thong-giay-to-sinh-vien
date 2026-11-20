@@ -872,7 +872,7 @@ function TeacherDashboardPage({ user, logoSrc = DEFAULT_LOGO_SRC, onLogout }) {
                 <div className="sm:col-span-2">
                   <p className="text-slate-500">Email công vụ</p>
                   <p className="mt-0.5 font-semibold text-slate-800">
-                    {user?.email || 'maiant@caodangvietmyhanoi.edu.vn'}
+                    {user?.email || 'gvcn@caodangvietmyhanoi.edu.vn'}
                   </p>
                 </div>
               </div>

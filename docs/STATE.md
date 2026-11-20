@@ -34,6 +34,7 @@ Vùng sở hữu: `src/pages/`, `src/components/`
 - Tối ưu hóa layout in ấn chuẩn khổ A4 (@media print) cho tính năng in/lưu PDF trực tiếp từ trình duyệt, tự động ẩn giao diện web xung quanh.
 - Bổ sung thanh tiến trình 4 chặng (`WorkflowTimeline`) trực quan trên cả Student Portal (`StudentDashboardPage.jsx`) và Admin Portal (`AdminDashboardPage.jsx`).
 - Kiểm tra toàn diện 6 bảng cốt lõi trên Supabase (tất cả đều đã tồn tại và sẵn sàng hoạt động). Tạo file migration `supabase/migrations/20261120_seed_accounts_and_workflows.sql` cung cấp mã lệnh SQL tạo tài khoản & mật khẩu cho Quản trị viên (`QL001`) và Giảng viên (`GV001`, `GV002`) vào `auth.users` và `public.profiles`, đồng thời nạp seed data 8 loại đơn và quy trình 4 chặng. Chuẩn hóa `src/services/authService.js` map mã cán bộ sang email trước khi gọi Supabase Auth.
+- Cập nhật định danh tài khoản Quản trị viên thành mã `admincdvmhn` (email: `admin@caodangvietmyhanoi.edu.vn`) và Giáo viên chủ nhiệm thành mã `gvcn` (email: `gvcn@caodangvietmyhanoi.edu.vn`), đồng bộ trên `authService.js`, các trang giao diện Dashboard và file migration Supabase.
 
 ## Đang làm
 - Chạy Seed data mẫu đơn Xác nhận HSSV trên Supabase; chuẩn bị gắn tiếp form cho các loại đơn khác (bảng điểm, miễn giảm học phí, phúc khảo...) và chuyển sang dùng React Router khi hoàn thiện hợp đồng services.

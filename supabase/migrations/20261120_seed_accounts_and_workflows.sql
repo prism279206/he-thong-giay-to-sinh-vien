@@ -121,27 +121,27 @@ $$ language plpgsql security definer;
 -- 3. TẠO TÀI KHOẢN VÀ MẬT KHẨU (Mật khẩu mặc định: 123456)
 -- ========================================================
 
--- 3.1. Cán bộ Quản lý - Tiếp nhận & Phân phối Một Cửa (Admin)
--- Đăng nhập bằng mã: QL001 hoặc email: ql001@caodangvietmyhanoi.edu.vn | Mật khẩu: 123456
+-- 3.1. Cán bộ Quản trị - Tiếp nhận & Phân phối Một Cửa (Admin)
+-- Đăng nhập bằng mã: admincdvmhn hoặc email: admin@caodangvietmyhanoi.edu.vn | Mật khẩu: 123456
 select public.upsert_user_account(
   'a0000000-0000-0000-0000-000000000001'::uuid,
-  'ql001@caodangvietmyhanoi.edu.vn',
+  'admin@caodangvietmyhanoi.edu.vn',
   '123456',
-  'QL001',
-  'Cán bộ Tiếp nhận Một Cửa',
+  'admincdvmhn',
+  'Cán bộ Quản trị Một Cửa',
   'admin',
   'Phòng Đào tạo & Quản lý Khoa học',
   'Ban Tiếp nhận Một Cửa'
 );
 
--- 3.2. Giảng viên chủ nhiệm GV001 (Staff)
--- Đăng nhập bằng mã: GV001 hoặc email: maiant@caodangvietmyhanoi.edu.vn | Mật khẩu: 123456
+-- 3.2. Giảng viên chủ nhiệm GVCN (Staff)
+-- Đăng nhập bằng mã: gvcn hoặc email: gvcn@caodangvietmyhanoi.edu.vn | Mật khẩu: 123456
 select public.upsert_user_account(
   'b0000000-0000-0000-0000-000000000001'::uuid,
-  'maiant@caodangvietmyhanoi.edu.vn',
+  'gvcn@caodangvietmyhanoi.edu.vn',
   '123456',
-  'GV001',
-  'ThS. Nguyễn Thị Mai',
+  'gvcn',
+  'ThS. Nguyễn Thị Mai (GVCN)',
   'staff',
   'Khoa Công nghệ thông tin',
   'CD-CNTT-K25A'
@@ -312,3 +312,4 @@ values
     'Đã hoàn thành (Sẵn sàng nhận kết quả)'
   )
 on conflict (id) do nothing;
+
