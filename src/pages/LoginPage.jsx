@@ -1,39 +1,9 @@
 import { useState } from 'react';
 import { User, Lock, Eye, EyeOff, ShieldAlert, HelpCircle, X, Info } from 'lucide-react';
 import { signIn } from '../services/authService';
+import { formatCccd } from '../services/cmsService';
 
 const SAVED_IDENTIFIER_KEY = 'vmh_saved_user';
-
-// Danh sách tài khoản thử nghiệm theo từng phân quyền (sau này nối Supabase Auth)
-const _MOCK_ACCOUNTS = [
-    {
-        code: '24123456',
-        email: 'sinhvien@caodangvietmyhanoi.edu.vn',
-        password: '123456',
-        fullName: 'Nguyễn Văn Tiến',
-        studentCode: '24123456',
-        role: 'student',
-    },
-    {
-        code: 'GV001',
-        email: 'maiant@caodangvietmyhanoi.edu.vn',
-        password: '123456',
-        fullName: 'Nguyễn Thị Mai',
-        teacherCode: 'GV001',
-        role: 'teacher',
-        title: 'Giảng viên',
-        department: 'Khoa Công nghệ thông tin',
-    },
-    {
-        code: 'QL001',
-        email: 'ql001@caodangvietmyhanoi.edu.vn',
-        password: '123456',
-        fullName: 'Cán bộ Quản lý - Ban Tiếp nhận Một cửa',
-        role: 'admin',
-        title: 'Cán bộ quản lý tiếp nhận & điều phối',
-        department: 'Phòng Hành chính - Một cửa & Quản lý Đào tạo',
-    },
-];
 
 // Đường dẫn ảnh logo mặc định của trường (có thể ghi đè qua prop logoSrc từ App.jsx).
 export const DEFAULT_LOGO_SRC =
@@ -162,6 +132,13 @@ function LoginPage({ logoSrc = DEFAULT_LOGO_SRC, onLoginSuccess }) {
                 className: prof.lop || prof.class_name || '',
                 faculty: prof.khoa || prof.faculty || '',
                 major: prof.nganh || prof.major || '',
+                dob: prof.ngay_sinh || prof.dob || '',
+                pob: prof.noi_sinh || prof.pob || '',
+                idCardNumber: formatCccd(prof.cccd || prof.id_card_number || ''),
+                idCardDate: prof.ngay_cap_cccd || prof.id_card_date || '',
+                idCardPlace: prof.noi_cap_cccd || prof.id_card_place || 'Bộ Công an',
+                academicYear: prof.khoa_hoc || prof.academic_year || '',
+                phone: prof.sdt || prof.phone || '',
             };
             if (onLoginSuccess) {
                 onLoginSuccess(mappedUser);
@@ -297,72 +274,6 @@ function LoginPage({ logoSrc = DEFAULT_LOGO_SRC, onLoginSuccess }) {
                                 'Đăng nhập'
                             )}
                         </button>
-
-                        {/* Chọn nhanh tài khoản mẫu để test */}
-                        <div className="pt-2">
-                            <div className="flex items-center gap-2 mb-2">
-                                <div className="h-px flex-1 bg-slate-200" />
-                                <span className="text-[11px] font-medium text-slate-400">Chọn nhanh tài khoản thử nghiệm</span>
-                                <div className="h-px flex-1 bg-slate-200" />
-                            </div>
-                            <div className="grid grid-cols-2 gap-1.5 text-center sm:grid-cols-5">
-                                <button
-                                    type="button"
-                                    onClick={() => {
-                                        setIdentifier('61112420189');
-                                        setPassword('123456');
-                                    }}
-                                    className="rounded-lg border border-blue-200 bg-blue-50/60 py-1.5 px-1.5 text-[11px] font-semibold text-blue-800 hover:bg-blue-100 transition-colors"
-                                    title="Sinh viên Nguyễn Văn Tiến (Mã sinh viên)"
-                                >
-                                    SV Tiến (Mã)
-                                </button>
-                                <button
-                                    type="button"
-                                    onClick={() => {
-                                        setIdentifier('tien12420189@caodangvietmyhanoi.edu.vn');
-                                        setPassword('123456');
-                                    }}
-                                    className="rounded-lg border border-blue-200 bg-blue-50/60 py-1.5 px-1.5 text-[11px] font-semibold text-blue-800 hover:bg-blue-100 transition-colors"
-                                    title="Sinh viên Nguyễn Văn Tiến (Email trường)"
-                                >
-                                    SV Tiến (Email)
-                                </button>
-                                <button
-                                    type="button"
-                                    onClick={() => {
-                                        setIdentifier('24123456');
-                                        setPassword('123456');
-                                    }}
-                                    className="rounded-lg border border-slate-200 bg-slate-50 py-1.5 px-1.5 text-[11px] font-medium text-slate-600 hover:bg-blue-50 hover:text-blue-700 transition-colors"
-                                    title="Sinh viên Trần Văn Minh"
-                                >
-                                    SV Minh
-                                </button>
-                                <button
-                                    type="button"
-                                    onClick={() => {
-                                        setIdentifier('huong.do1@caodangvietmy.edu.vn');
-                                        setPassword('123456');
-                                    }}
-                                    className="rounded-lg border border-slate-200 bg-slate-50 py-1.5 px-1.5 text-[11px] font-medium text-slate-600 hover:bg-blue-50 hover:text-blue-700 transition-colors"
-                                    title="Giảng viên Đỗ Thị Hường"
-                                >
-                                    Giảng viên
-                                </button>
-                                <button
-                                    type="button"
-                                    onClick={() => {
-                                        setIdentifier('QL001');
-                                        setPassword('123456');
-                                    }}
-                                    className="rounded-lg border border-amber-200 bg-amber-50/70 py-1.5 px-1.5 text-[11px] font-semibold text-amber-800 hover:bg-amber-100 transition-colors"
-                                    title="Cán bộ Một cửa / Admin"
-                                >
-                                    Một cửa
-                                </button>
-                            </div>
-                        </div>
                     </form>
                 </div>
             </main>

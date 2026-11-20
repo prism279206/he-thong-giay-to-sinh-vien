@@ -19,19 +19,27 @@ import {
 } from 'lucide-react';
 import { DEFAULT_LOGO_SRC } from './LoginPage';
 import RequestTypePicker from '../components/RequestTypePicker';
-import SignatureManager from '../components/SignatureManager';
 import OfficialDocumentView from '../components/OfficialDocumentView';
+import { getStudentProfile, formatCccd } from '../services/cmsService';
 import {
   getStoredRequests,
   getStoredNotifications,
   markNotificationAsRead,
 } from '../components/mockRequestsStore';
 
-// Menu điều hướng bên trái (đã bỏ mục Tạo đơn theo yêu cầu)
+function formatDob(dateStr) {
+  if (!dateStr) return '';
+  if (/^\d{4}-\d{2}-\d{2}/.test(dateStr)) {
+    const [y, m, d] = dateStr.slice(0, 10).split('-');
+    return `${d}/${m}/${y}`;
+  }
+  return dateStr;
+}
+
+// Menu điều hướng bên trái (đã loại bỏ mục lưu trữ chữ ký sinh viên theo yêu cầu bảo mật)
 const NAV_ITEMS = [
   { id: 'overview', label: 'Tổng quan', icon: Home },
   { id: 'my-requests', label: 'Đơn của tôi', icon: FileText },
-  { id: 'signature', label: 'Chữ ký cá nhân', icon: PenTool },
   { id: 'profile', label: 'Thông tin cá nhân', icon: User },
 ];
 
@@ -158,6 +166,22 @@ function StudentDashboardPage({ user, logoSrc = DEFAULT_LOGO_SRC, onLogout }) {
     getStoredNotifications(user?.studentCode)
   );
 
+  const [liveProfile, setLiveProfile] = useState(null);
+
+  useEffect(() => {
+    let isMounted = true;
+    if (user?.studentCode) {
+      getStudentProfile(user.studentCode).then((res) => {
+        if (isMounted && res?.data) {
+          setLiveProfile(res.data);
+        }
+      });
+    }
+    return () => {
+      isMounted = false;
+    };
+  }, [user?.studentCode]);
+
   useEffect(() => {
     setStoredRequests(getStoredRequests());
     setNotifications(getStoredNotifications(user?.studentCode));
@@ -167,13 +191,23 @@ function StudentDashboardPage({ user, logoSrc = DEFAULT_LOGO_SRC, onLogout }) {
     return notifications.filter((n) => !n.isRead).length;
   }, [notifications]);
 
-  // Lọc đơn của sinh viên hiện tại
+  // Lọc đơn của sinh viên hiện tại: Chỉ hiển thị đơn thuộc về chính sinh viên đang đăng nhập
   const myRequests = useMemo(() => {
-    const myCode = user?.studentCode || '61112420189';
-    const list = storedRequests.filter(
-      (r) => !r.studentCode || r.studentCode === myCode || r.studentName === user?.fullName
-    );
-    return list.length > 0 ? list : storedRequests;
+    const myCode = user?.studentCode ? String(user.studentCode).trim() : '';
+    const myName = user?.fullName ? String(user.fullName).trim().toLowerCase() : '';
+    if (!myCode && !myName) return [];
+
+    return storedRequests.filter((r) => {
+      const rCode = r.studentCode ? String(r.studentCode).trim() : '';
+      const rName = r.studentName ? String(r.studentName).trim().toLowerCase() : '';
+
+      // Chuẩn hóa so khớp mã SV (bỏ tiền tố 611 nếu có để so sánh 8 số cuối)
+      const cleanMyCode = myCode.replace(/^611/, '');
+      const cleanRCode = rCode.replace(/^611/, '');
+      const codeMatch = Boolean(cleanMyCode && cleanRCode && cleanMyCode === cleanRCode);
+      const nameMatch = Boolean(myName && rName && myName === rName);
+      return codeMatch || nameMatch;
+    });
   }, [storedRequests, user]);
 
   const normalizedQuery = searchQuery.trim().toLowerCase();
@@ -295,13 +329,26 @@ function StudentDashboardPage({ user, logoSrc = DEFAULT_LOGO_SRC, onLogout }) {
                   />
                 </td>
                 <td className="py-3.5 pr-2 pl-4 text-right whitespace-nowrap">
-                  <button
-                    type="button"
-                    onClick={() => setSelectedRequest(req)}
-                    className="cursor-pointer rounded-lg border border-blue-200 bg-white px-3 py-1.5 text-xs font-semibold text-[#2563EB] transition-colors hover:border-[#2563EB] hover:bg-blue-50"
-                  >
-                    Xem chi tiết
-                  </button>
+                  <div className="flex items-center justify-end gap-1.5">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSelectedRequest(req);
+                        setViewFullDoc(true);
+                      }}
+                      className="cursor-pointer rounded-lg bg-[#2563EB] px-3 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-blue-700 shadow-xs"
+                      title="Mở toàn văn văn bản đơn A4"
+                    >
+                      Mở đơn (A4)
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setSelectedRequest(req)}
+                      className="cursor-pointer rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700 transition-colors hover:border-[#2563EB] hover:bg-slate-50"
+                    >
+                      Chi tiết
+                    </button>
+                  </div>
                 </td>
               </tr>
             ))
@@ -561,27 +608,68 @@ function StudentDashboardPage({ user, logoSrc = DEFAULT_LOGO_SRC, onLogout }) {
             </section>
           )}
 
-          {activeTab === 'signature' && <SignatureManager />}
-
           {activeTab === 'profile' && (
             <section className="rounded-2xl border border-slate-200/70 bg-white p-6 shadow-xs sm:p-8">
-              <h1 className="text-lg font-bold text-slate-800">Thông tin cá nhân</h1>
-              <div className="mt-4 grid grid-cols-1 gap-4 rounded-xl bg-slate-50 p-4 text-sm sm:grid-cols-2">
+              <div className="flex items-center justify-between border-b border-slate-100 pb-4">
                 <div>
-                  <p className="text-slate-500">Họ và tên</p>
-                  <p className="mt-0.5 font-semibold text-slate-800">{user?.fullName}</p>
+                  <h1 className="text-lg font-bold text-slate-800">Thông tin cá nhân sinh viên</h1>
+                  <p className="mt-1 text-xs text-slate-500">
+                    Dữ liệu được đồng bộ chính thức theo thời gian thực từ Hệ thống Thông tin Sinh viên (CIS).
+                  </p>
                 </div>
-                <div>
-                  <p className="text-slate-500">Mã sinh viên</p>
-                  <p className="mt-0.5 font-semibold text-slate-800">{user?.studentCode}</p>
+                <span className="rounded-full bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700">
+                  Dữ liệu thật CMS
+                </span>
+              </div>
+
+              <div className="mt-5 grid grid-cols-1 gap-4 text-sm sm:grid-cols-2 md:grid-cols-3">
+                <div className="rounded-xl border border-slate-100 bg-slate-50/70 p-3.5">
+                  <p className="text-xs font-medium text-slate-500">Họ và tên</p>
+                  <p className="mt-1 font-bold text-slate-800">{liveProfile?.hoTen || user?.fullName}</p>
                 </div>
-                <div>
-                  <p className="text-slate-500">Email trường</p>
-                  <p className="mt-0.5 font-semibold text-slate-800">{user?.email}</p>
+                <div className="rounded-xl border border-slate-100 bg-slate-50/70 p-3.5">
+                  <p className="text-xs font-medium text-slate-500">Mã sinh viên</p>
+                  <p className="mt-1 font-bold text-[#2563EB]">{liveProfile?.maSinhVien || user?.studentCode}</p>
                 </div>
-                <div>
-                  <p className="text-slate-500">Vai trò</p>
-                  <p className="mt-0.5 font-semibold text-slate-800">{user?.role}</p>
+                <div className="rounded-xl border border-slate-100 bg-slate-50/70 p-3.5">
+                  <p className="text-xs font-medium text-slate-500">Ngày sinh</p>
+                  <p className="mt-1 font-semibold text-slate-800">
+                    {formatDob(liveProfile?.ngaySinh || user?.dob) || 'Chưa cập nhật'}
+                  </p>
+                </div>
+                <div className="rounded-xl border border-slate-100 bg-slate-50/70 p-3.5">
+                  <p className="text-xs font-medium text-slate-500">Số CCCD (12 số)</p>
+                  <p className="mt-1 font-semibold text-slate-800">
+                    {formatCccd(liveProfile?.cccd || user?.idCardNumber) || 'Chưa cập nhật'}
+                  </p>
+                </div>
+                <div className="rounded-xl border border-slate-100 bg-slate-50/70 p-3.5">
+                  <p className="text-xs font-medium text-slate-500">Lớp sinh hoạt</p>
+                  <p className="mt-1 font-semibold text-slate-800">
+                    {liveProfile?.lop || user?.className || 'Chưa phân lớp'}
+                  </p>
+                </div>
+                <div className="rounded-xl border border-slate-100 bg-slate-50/70 p-3.5">
+                  <p className="text-xs font-medium text-slate-500">Khóa học</p>
+                  <p className="mt-1 font-semibold text-slate-800">
+                    {liveProfile?.khoaHoc || user?.academicYear || 'K24'}
+                  </p>
+                </div>
+                <div className="rounded-xl border border-slate-100 bg-slate-50/70 p-3.5">
+                  <p className="text-xs font-medium text-slate-500">Khoa</p>
+                  <p className="mt-1 font-semibold text-slate-800">
+                    {liveProfile?.khoa || user?.faculty || 'Công nghệ - Thiết kế'}
+                  </p>
+                </div>
+                <div className="rounded-xl border border-slate-100 bg-slate-50/70 p-3.5">
+                  <p className="text-xs font-medium text-slate-500">Ngành học</p>
+                  <p className="mt-1 font-semibold text-slate-800">
+                    {liveProfile?.nganh || user?.major || 'Ứng dụng phần mềm'}
+                  </p>
+                </div>
+                <div className="rounded-xl border border-slate-100 bg-slate-50/70 p-3.5">
+                  <p className="text-xs font-medium text-slate-500">Email trường</p>
+                  <p className="mt-1 font-semibold text-slate-800">{user?.email}</p>
                 </div>
               </div>
             </section>
@@ -688,15 +776,18 @@ function StudentDashboardPage({ user, logoSrc = DEFAULT_LOGO_SRC, onLogout }) {
               >
                 Đóng
               </button>
-              {(selectedRequest.teacherSignature || selectedRequest.status === 'completed') && (
-                <button
-                  type="button"
-                  onClick={() => setViewFullDoc(true)}
-                  className="flex-1 cursor-pointer rounded-xl bg-[#2563EB] py-2.5 text-xs font-semibold text-white hover:bg-[#1D4ED8] shadow-sm"
-                >
-                  Xem văn bản có chữ ký & dấu
-                </button>
-              )}
+              <button
+                type="button"
+                onClick={() => setViewFullDoc(true)}
+                className="flex-1 cursor-pointer rounded-xl bg-[#2563EB] py-2.5 text-xs font-semibold text-white hover:bg-[#1D4ED8] shadow-sm flex items-center justify-center gap-1.5"
+              >
+                <Eye className="h-4 w-4" />
+                <span>
+                  {selectedRequest.teacherSignature || selectedRequest.status === 'completed'
+                    ? 'Xem văn bản có chữ ký & dấu'
+                    : 'Mở văn bản đơn (A4)'}
+                </span>
+              </button>
             </div>
           </div>
         </div>

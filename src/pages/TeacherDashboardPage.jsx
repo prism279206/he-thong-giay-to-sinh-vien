@@ -19,9 +19,11 @@ import {
   RotateCcw,
   ShieldCheck,
   AlertTriangle,
+  Eye,
 } from 'lucide-react';
 import { DEFAULT_LOGO_SRC } from './LoginPage';
 import SignatureManager from '../components/SignatureManager';
+import OfficialDocumentView from '../components/OfficialDocumentView';
 import {
   getStoredRequests,
   signAndApproveByTeacher,
@@ -212,6 +214,7 @@ function TeacherDashboardPage({ user, logoSrc = DEFAULT_LOGO_SRC, onLogout }) {
 
   // Modal xem chi tiết và ký duyệt đơn của sinh viên
   const [selectedRequest, setSelectedRequest] = useState(null);
+  const [viewDocRequest, setViewDocRequest] = useState(null);
   const [requestsList, setRequestsList] = useState(() => getStoredRequests());
   const [actionSuccessMsg, setActionSuccessMsg] = useState('');
 
@@ -728,13 +731,23 @@ function TeacherDashboardPage({ user, logoSrc = DEFAULT_LOGO_SRC, onLogout }) {
                               <StatusPill status={req.status} label={req.statusLabel} />
                             </td>
                             <td className="py-3.5 pr-2 pl-4 text-right whitespace-nowrap">
-                              <button
-                                type="button"
-                                onClick={() => setSelectedRequest(req)}
-                                className="cursor-pointer rounded-lg border border-blue-200 bg-white px-3 py-1.5 text-xs font-semibold text-[#2563EB] transition-colors hover:border-[#2563EB] hover:bg-blue-50"
-                              >
-                                Xem chi tiết
-                              </button>
+                              <div className="flex items-center justify-end gap-1.5">
+                                <button
+                                  type="button"
+                                  onClick={() => setViewDocRequest(req)}
+                                  className="cursor-pointer rounded-lg bg-[#2563EB] px-2.5 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-blue-700 shadow-xs"
+                                  title="Mở toàn văn văn bản đơn A4"
+                                >
+                                  Mở đơn
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => setSelectedRequest(req)}
+                                  className="cursor-pointer rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700 transition-colors hover:border-[#2563EB] hover:bg-slate-50"
+                                >
+                                  Chi tiết
+                                </button>
+                              </div>
                             </td>
                           </tr>
                         ))
@@ -787,13 +800,23 @@ function TeacherDashboardPage({ user, logoSrc = DEFAULT_LOGO_SRC, onLogout }) {
                           <StatusPill status={req.status} label={req.statusLabel} />
                         </td>
                         <td className="py-3.5 pr-2 pl-4 text-right whitespace-nowrap">
-                          <button
-                            type="button"
-                            onClick={() => setSelectedRequest(req)}
-                            className="cursor-pointer rounded-lg bg-[#2563EB] px-3 py-1.5 text-xs font-semibold text-white hover:bg-[#1D4ED8]"
-                          >
-                            Duyệt đơn
-                          </button>
+                          <div className="flex items-center justify-end gap-1.5">
+                            <button
+                              type="button"
+                              onClick={() => setViewDocRequest(req)}
+                              className="cursor-pointer rounded-lg border border-blue-200 bg-white px-2.5 py-1.5 text-xs font-semibold text-[#2563EB] hover:bg-blue-50"
+                              title="Mở toàn văn văn bản đơn A4"
+                            >
+                              Mở đơn
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setSelectedRequest(req)}
+                              className="cursor-pointer rounded-lg bg-[#2563EB] px-3 py-1.5 text-xs font-semibold text-white hover:bg-[#1D4ED8]"
+                            >
+                              Duyệt đơn
+                            </button>
+                          </div>
                         </td>
                       </tr>
                     ))}
@@ -919,6 +942,15 @@ function TeacherDashboardPage({ user, logoSrc = DEFAULT_LOGO_SRC, onLogout }) {
             <div className="mt-5 space-y-2">
               <button
                 type="button"
+                onClick={() => setViewDocRequest(selectedRequest)}
+                className="flex w-full cursor-pointer items-center justify-center gap-2 rounded-xl border border-blue-200 bg-blue-50/70 py-2.5 text-xs font-bold text-[#2563EB] hover:bg-blue-100"
+              >
+                <Eye className="h-4 w-4" />
+                <span>Mở xem toàn văn bản đơn A4</span>
+              </button>
+
+              <button
+                type="button"
                 onClick={() => handleApproveRequest(selectedRequest.id)}
                 className="flex w-full cursor-pointer items-center justify-center gap-2 rounded-xl bg-[#2563EB] py-3 text-xs font-bold text-white shadow-sm transition-all hover:bg-[#1D4ED8]"
               >
@@ -949,6 +981,52 @@ function TeacherDashboardPage({ user, logoSrc = DEFAULT_LOGO_SRC, onLogout }) {
                   Từ chối đơn
                 </button>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+      {/* MODAL XEM TOÀN VĂN ĐƠN A4 CHO GIÁO VIÊN */}
+      {viewDocRequest && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 p-4 backdrop-blur-[2px] overflow-y-auto">
+          <div className="w-full max-w-3xl rounded-2xl bg-white shadow-2xl overflow-hidden my-6">
+            <div className="flex items-center justify-between border-b border-slate-200 bg-slate-50 px-6 py-3.5">
+              <div className="flex items-center gap-2">
+                <FileText className="h-5 w-5 text-[#2563EB]" />
+                <h3 className="font-bold text-slate-800 text-sm">
+                  Toàn văn văn bản đơn A4 — {viewDocRequest.id}
+                </h3>
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => window.print()}
+                  className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-100"
+                >
+                  In / Lưu PDF
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setViewDocRequest(null)}
+                  className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-200 hover:text-slate-700"
+                  aria-label="Đóng"
+                >
+                  <X className="h-5 w-5" />
+                </button>
+              </div>
+            </div>
+
+            <div className="p-4 sm:p-6 max-h-[80vh] overflow-y-auto bg-slate-100">
+              <OfficialDocumentView request={viewDocRequest} />
+            </div>
+
+            <div className="border-t border-slate-200 bg-slate-50 px-6 py-3 text-right">
+              <button
+                type="button"
+                onClick={() => setViewDocRequest(null)}
+                className="rounded-xl bg-[#2563EB] px-5 py-2 text-xs font-semibold text-white hover:bg-blue-700"
+              >
+                Đóng văn bản
+              </button>
             </div>
           </div>
         </div>

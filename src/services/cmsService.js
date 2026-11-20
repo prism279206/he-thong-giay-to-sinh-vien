@@ -16,67 +16,25 @@ const CMS_BEARER_TOKEN =
   '';
 
 /**
- * Danh sách sinh viên mẫu chuẩn theo schema của trường
- * Dùng khi trường chưa cấp mã khóa thật hoặc khi chạy offline / dev
+ * Danh sách sinh viên dự phòng: Đã kết nối API CMS chính thức của nhà trường,
+ * không còn sử dụng dữ liệu giả lập.
  */
-const MOCK_STUDENTS = {
-  '61112420189': {
-    hoTen: 'Nguyễn Văn Tiến',
-    maSinhVien: '61112420189',
-    sdt: '0987654321',
-    cccd: '001204012345',
-    ngayCapCccd: '2021-06-20',
-    ngaySinh: '2006-05-15',
-    noiSinh: 'Hà Nội',
-    khoaHoc: '2024-2027',
-    lop: 'Cao đẳng CNTT K24',
-    khoa: 'Khoa Công nghệ',
-    nganh: 'Công nghệ thông tin',
-    updatedAt: new Date().toISOString(),
-  },
-  '12420189': {
-    hoTen: 'Nguyễn Văn Tiến',
-    maSinhVien: '61112420189',
-    sdt: '0987654321',
-    cccd: '001204012345',
-    ngayCapCccd: '2021-06-20',
-    ngaySinh: '2006-05-15',
-    noiSinh: 'Hà Nội',
-    khoaHoc: '2024-2027',
-    lop: 'Cao đẳng CNTT K24',
-    khoa: 'Khoa Công nghệ',
-    nganh: 'Công nghệ thông tin',
-    updatedAt: new Date().toISOString(),
-  },
-  '24123456': {
-    hoTen: 'Trần Văn Minh',
-    maSinhVien: '24123456',
-    sdt: '0912345678',
-    cccd: '001204056789',
-    ngayCapCccd: '2022-01-10',
-    ngaySinh: '2006-08-20',
-    noiSinh: 'Bắc Ninh',
-    khoaHoc: '2024-2027',
-    lop: 'CD-CNTT-K24A',
-    khoa: 'Khoa Công nghệ thông tin',
-    nganh: 'Công nghệ thông tin',
-    updatedAt: new Date().toISOString(),
-  },
-  SV00123: {
-    hoTen: 'Nguyễn Văn A',
-    maSinhVien: 'SV00123',
-    sdt: '0901234567',
-    cccd: '001200001234',
-    ngayCapCccd: '',
-    ngaySinh: '2006-01-02',
-    noiSinh: '',
-    khoaHoc: '2024-2027',
-    lop: 'Cao đẳng CNTT K24',
-    khoa: 'Khoa Công nghệ',
-    nganh: 'Công nghệ thông tin',
-    updatedAt: new Date().toISOString(),
-  },
-};
+const MOCK_STUDENTS = {};
+
+/**
+ * Chuẩn hóa số CCCD: Đảm bảo đủ 12 chữ số theo quy chuẩn Căn cước công dân Việt Nam.
+ * Nếu dữ liệu từ hệ thống thiếu số 0 ở đầu (do lưu trữ dạng số), tự động thêm '0' vào đầu cho đủ 12 số.
+ * Ví dụ: "1206068891" -> "001206068891"
+ */
+export function formatCccd(cccd) {
+  if (!cccd) return '';
+  const clean = String(cccd).trim().replace(/\D/g, '');
+  if (!clean) return '';
+  if (clean.length < 12) {
+    return clean.padStart(12, '0');
+  }
+  return clean;
+}
 
 /**
  * Chuẩn hóa tên tiếng Việt sang không dấu viết thường
@@ -260,18 +218,19 @@ export async function getStudentProfile(studentCode, _options = {}) {
         if (response.ok) {
           const json = await response.json();
           if (json.data) {
+            if (json.data.cccd) {
+              json.data.cccd = formatCccd(json.data.cccd);
+            }
             return { data: json.data, error: null, isMock: false };
           }
         }
 
         if (response.status === 404) {
-          // Nếu API trường hoạt động và trả về không tìm thấy
-          // Kiểm tra xem có trong danh sách mock dự phòng không
-          const foundMock = findMockStudent(cleanCode);
-          if (foundMock) {
-            return { data: foundMock, error: null, isMock: true };
-          }
-          return { data: null, error: `Không tìm thấy hồ sơ sinh viên với mã: "${cleanCode}" trên hệ thống nhà trường.`, isMock: false };
+          return {
+            data: null,
+            error: `Không tìm thấy hồ sơ sinh viên với mã: "${cleanCode}" trên hệ thống nhà trường.`,
+            isMock: false,
+          };
         }
 
         if (response.status === 401) {
@@ -282,29 +241,22 @@ export async function getStudentProfile(studentCode, _options = {}) {
           };
         }
       } else {
-        // Máy chủ trường trả về HTML 404 (chưa kích hoạt route API trên domain)
         return {
           data: null,
-          error: `Máy chủ API của trường (${CMS_API_BASE_URL}) hiện đang trả về lỗi 404 (The page could not be found). Tuyến API này chưa được phía kỹ thuật của trường kích hoạt trên hệ thống thật.`,
+          error: `Máy chủ API của trường (${CMS_API_BASE_URL}) hiện không khả dụng. Vui lòng thử lại sau.`,
           isMock: false,
         };
       }
     } catch (err) {
-      console.warn('Không thể kết nối đến máy chủ trường, tự động chuyển sang chế độ dự phòng:', err.message);
+      console.warn('Lỗi kết nối API trường:', err.message);
+      return {
+        data: null,
+        error: `Không thể kết nối đến máy chủ CMS của nhà trường (${err.message}).`,
+        isMock: false,
+      };
     }
   }
 
-  // 2. Chế độ dự phòng (Mock Provider): Trả về dữ liệu mẫu chuẩn theo docs trường
-  const foundStudent = findMockStudent(cleanCode);
-  if (foundStudent) {
-    return {
-      data: foundStudent,
-      error: null,
-      isMock: true,
-    };
-  }
-
-  // Nếu không tìm thấy hồ sơ sinh viên hợp lệ -> Báo lỗi từ chối, tuyệt đối không tự bịa sinh viên ảo
   return {
     data: null,
     error: `Không tìm thấy hồ sơ sinh viên với mã: "${cleanCode}". Vui lòng kiểm tra lại chính xác mã sinh viên của trường.`,

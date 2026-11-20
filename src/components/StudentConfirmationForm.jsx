@@ -16,21 +16,32 @@ import {
 import logoCdvm from '../assets/images/logocđvm.jpg';
 import { addStudentRequest } from './mockRequestsStore';
 import { submitRequest } from '../services/requestService';
+import { getStudentProfile, formatCccd } from '../services/cmsService';
 
-// Dữ liệu mô phỏng lấy từ API CMS của trường (lý do mặc định để trống theo yêu cầu)
-const getMockCmsData = (user) => ({
-  fullName: user?.fullName || 'Nguyễn Văn Tiến',
-  studentCode: user?.studentCode || '24123456',
-  phone: '0987654321',
-  dob: '15/08/2005',
-  pob: 'Hà Nội',
-  idCardNumber: '001205012345',
-  idCardDate: '20/08/2021',
-  idCardPlace: 'Bộ Công an', // Nơi cấp mặc định là Bộ Công an theo yêu cầu
-  className: 'CD-CNTT-K24A',
-  major: 'Công nghệ thông tin',
+function formatDob(dateStr) {
+  if (!dateStr) return '';
+  if (/^\d{4}-\d{2}-\d{2}/.test(dateStr)) {
+    const [y, m, d] = dateStr.slice(0, 10).split('-');
+    return `${d}/${m}/${y}`;
+  }
+  return dateStr;
+}
+
+// Dữ liệu thật lấy từ API CMS của trường (lý do mặc định để trống theo yêu cầu)
+const getStudentCmsData = (user) => ({
+  fullName: user?.fullName || '',
+  studentCode: user?.studentCode || '',
+  phone: user?.phone || '',
+  dob: formatDob(user?.dob) || '',
+  pob: user?.pob || 'Hà Nội',
+  idCardNumber: formatCccd(user?.idCardNumber) || '',
+  idCardDate: user?.idCardDate || '',
+  idCardPlace: user?.idCardPlace || 'Bộ Công an',
+  className: user?.className || '',
+  faculty: user?.faculty || '',
+  major: user?.major || '',
   campus: 'Trịnh Văn Bô', // 'Cầu Giấy' | 'Mỹ Đình' | 'Trịnh Văn Bô' | 'Phúc Diễn'
-  academicYear: 'K24 (2024 - 2027)',
+  academicYear: user?.academicYear ? `${user.academicYear} (2024 - 2027)` : 'K24 (2024 - 2027)',
   trainingSystem: 'Chính quy',
   reason: '', // Mặc định để trống theo yêu cầu, không cần gợi ý
 });
@@ -111,19 +122,43 @@ function processSignatureImage(imgElement, threshold = 205, inkColorMode = 'blue
  * - Vai trò: Cố định theo tài khoản đăng nhập (chỉ tài khoản giáo viên mới ký được GVCN).
  * - Chữ ký sinh viên: Tích hợp trực tiếp ô ký tay hoặc tải ảnh chữ ký tự động tách nền ngay trong form.
  */
-function StudentConfirmationForm({ onBack, user }) {
-  const [formData, setFormData] = useState(() => getMockCmsData(user));
+function StudentConfirmationForm({ onBack, user, requestType }) {
+  const [formData, setFormData] = useState(() => getStudentCmsData(user));
   const [currentDateText] = useState(getFormattedCurrentDate);
 
-  // Chữ ký của sinh viên trong đơn (ưu tiên lấy từ chữ ký đã lưu nếu có)
-  const [studentSignature, setStudentSignature] = useState(
-    () => localStorage.getItem('vmh_saved_signature') || ''
-  );
+  // Đồng bộ thông tin sinh viên mới nhất từ API CMS nếu có
+  useEffect(() => {
+    let isMounted = true;
+    if (user?.studentCode) {
+      getStudentProfile(user.studentCode).then((res) => {
+        if (isMounted && res?.data) {
+          const cms = res.data;
+          setFormData((prev) => ({
+            ...prev,
+            fullName: cms.hoTen || prev.fullName,
+            studentCode: cms.maSinhVien || prev.studentCode,
+            dob: formatDob(cms.ngaySinh) || prev.dob,
+            pob: cms.noiSinh || prev.pob,
+            idCardNumber: formatCccd(cms.cccd) || prev.idCardNumber,
+            idCardDate: cms.ngayCapCccd || prev.idCardDate,
+            className: cms.lop || prev.className,
+            faculty: cms.khoa || prev.faculty,
+            major: cms.nganh || prev.major,
+            academicYear: cms.khoaHoc ? `${cms.khoaHoc} (2024 - 2027)` : prev.academicYear,
+          }));
+        }
+      });
+    }
+    return () => {
+      isMounted = false;
+    };
+  }, [user?.studentCode]);
 
-  // Tab phương thức ký trong form: 'draw' (ký tay) | 'upload' (tải ảnh) | 'saved' (đã lưu)
-  const [signatureMethod, setSignatureMethod] = useState(() =>
-    localStorage.getItem('vmh_saved_signature') ? 'saved' : 'draw'
-  );
+  // Chữ ký của sinh viên trong đơn (chỉ ký trực tiếp cho lá đơn này, không lưu vĩnh viễn vào bộ nhớ để chống lộ lọt)
+  const [studentSignature, setStudentSignature] = useState('');
+
+  // Tab phương thức ký trong form: 'draw' (ký tay trực tiếp) | 'upload' (tải ảnh chữ ký đơn này)
+  const [signatureMethod, setSignatureMethod] = useState('draw');
 
   // Trạng thái vẽ trên canvas trong form
   const formDrawCanvasRef = useRef(null);
@@ -148,7 +183,7 @@ function StudentConfirmationForm({ onBack, user }) {
 
   const handleResetToCms = () => {
     if (window.confirm('Khôi phục lại toàn bộ dữ liệu ban đầu từ hệ thống CMS?')) {
-      setFormData(getMockCmsData(user));
+      setFormData(getStudentCmsData(user));
     }
   };
 
@@ -238,7 +273,7 @@ function StudentConfirmationForm({ onBack, user }) {
       return;
     }
     if (!formData.reason.trim()) {
-      alert('Vui lòng nhập lý do xin cấp giấy xác nhận.');
+      alert(`Vui lòng nhập lý do làm ${requestType?.name ? requestType.name.toLowerCase() : 'đơn'}.`);
       return;
     }
 
@@ -248,9 +283,10 @@ function StudentConfirmationForm({ onBack, user }) {
 
     const newRequestPayload = {
       id: newRequestId,
-      typeId: 'rt-confirm-student',
-      typeName: 'Đơn xin cấp xác nhận học sinh – sinh viên',
-      typeCategory: 'Xác nhận học tập',
+      typeId: requestType?.id || 'rt-confirm-student',
+      typeName: requestType?.name || 'Đơn xin cấp xác nhận học sinh – sinh viên',
+      typeCategory: requestType?.category || 'Xác nhận học tập',
+      departmentName: requestType?.departmentName || 'Phòng Đào tạo & Quản lý Khoa học',
       studentName: formData.fullName.trim(),
       studentCode: formData.studentCode.trim(),
       phone: formData.phone.trim(),
@@ -260,7 +296,7 @@ function StudentConfirmationForm({ onBack, user }) {
       idCardDate: formData.idCardDate.trim(),
       idCardPlace: formData.idCardPlace.trim(),
       cohort: (formData.academicYear || 'K24').split(' ')[0],
-      faculty: 'Khoa Công nghệ thông tin',
+      faculty: formData.faculty || 'Công nghệ - Thiết kế',
       major: formData.major.trim(),
       className: formData.className.trim(),
       campus: formData.campus,
@@ -272,14 +308,14 @@ function StudentConfirmationForm({ onBack, user }) {
       urgency: 'normal',
       distributionStatus: 'unassigned',
       assignedTo: null,
-      studentSignature: studentSignature || localStorage.getItem('vmh_saved_signature') || '',
+      studentSignature: studentSignature || '',
       teacherSignature: '',
       logs: [
         {
           action: 'Nộp đơn trực tuyến',
           actor: `${formData.fullName.trim()} (Sinh viên)`,
           time: timeStr,
-          note: 'Sinh viên đã hoàn tất ký điện tử và gửi đơn đến Ban Tiếp nhận Một cửa.',
+          note: `Sinh viên đã hoàn tất ký điện tử và gửi đơn ${requestType?.name || 'xác nhận'} đến Ban Tiếp nhận Một cửa.`,
         },
       ],
     };
@@ -288,7 +324,7 @@ function StudentConfirmationForm({ onBack, user }) {
     submitRequest(newRequestPayload);
 
     alert(
-      `Đã nộp đơn xác nhận thành công (Mã đơn: ${newRequestId})!\n\nDữ liệu đơn kèm chữ ký của bạn đã được chuyển tới Ban Tiếp nhận Một cửa (Admin) để thẩm định và phân phối tới Giảng viên/Phòng ban.`
+      `Đã nộp ${requestType?.name || 'đơn'} thành công (Mã đơn: ${newRequestId})!\n\nDữ liệu đơn kèm chữ ký của bạn đã được chuyển tới Ban Tiếp nhận Một cửa (Admin) để thẩm định và phân phối tới Giảng viên/Phòng ban.`
     );
     if (onBack) onBack();
   };
@@ -308,10 +344,10 @@ function StudentConfirmationForm({ onBack, user }) {
           </button>
           <div>
             <h1 className="text-base font-bold text-slate-800 sm:text-lg">
-              Đơn xin cấp xác nhận học sinh – sinh viên
+              {requestType?.name || 'Đơn xin cấp xác nhận học sinh – sinh viên'}
             </h1>
             <p className="text-xs text-slate-500">
-              Dữ liệu lấy từ CMS • Toàn bộ thông tin có thể chỉnh sửa • Bản xem trước chuẩn Times New Roman
+              {requestType?.departmentName ? `Tiếp nhận: ${requestType.departmentName} • ` : ''}Dữ liệu tự động điền từ CMS • Toàn bộ thông tin có thể chỉnh sửa • Bản xem trước chuẩn Times New Roman
             </p>
           </div>
         </div>
@@ -446,11 +482,18 @@ function StudentConfirmationForm({ onBack, user }) {
                 </div>
 
                 <div>
-                  <label className="block text-xs font-medium text-slate-600">Số CCCD</label>
+                  <label className="block text-xs font-medium text-slate-600">Số CCCD (12 số)</label>
                   <input
                     type="text"
                     value={formData.idCardNumber}
+                    placeholder="12 chữ số CCCD"
+                    maxLength={12}
                     onChange={(e) => handleChange('idCardNumber', e.target.value)}
+                    onBlur={() => {
+                      if (formData.idCardNumber) {
+                        handleChange('idCardNumber', formatCccd(formData.idCardNumber));
+                      }
+                    }}
                     className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-800 focus:border-[#2563EB] focus:outline-none"
                   />
                 </div>
@@ -620,23 +663,6 @@ function StudentConfirmationForm({ onBack, user }) {
                   <Upload className="h-3.5 w-3.5" />
                   <span>Tải ảnh chữ ký</span>
                 </button>
-                {localStorage.getItem('vmh_saved_signature') && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setSignatureMethod('saved');
-                      setStudentSignature(localStorage.getItem('vmh_saved_signature') || '');
-                    }}
-                    className={`flex flex-1 cursor-pointer items-center justify-center gap-1.5 rounded-lg py-1.5 transition-all ${
-                      signatureMethod === 'saved'
-                        ? 'bg-white text-[#2563EB] shadow-xs'
-                        : 'text-slate-600 hover:text-slate-900'
-                    }`}
-                  >
-                    <Check className="h-3.5 w-3.5" />
-                    <span>Chữ ký đã lưu</span>
-                  </button>
-                )}
               </div>
 
               {/* Ô ký trực tiếp bằng tay/chuột */}
@@ -777,7 +803,7 @@ function StudentConfirmationForm({ onBack, user }) {
                 className="flex w-full cursor-pointer items-center justify-center gap-2 rounded-xl bg-[#2563EB] px-4 py-3 text-sm font-semibold text-white shadow-md shadow-blue-500/20 transition-all hover:bg-[#1D4ED8] active:scale-[0.99]"
               >
                 <Send className="h-4 w-4" />
-                <span>Nộp đơn xác nhận HSSV</span>
+                <span>Nộp {requestType?.name || 'đơn xác nhận HSSV'}</span>
               </button>
             </div>
           </form>
@@ -830,7 +856,7 @@ function StudentConfirmationForm({ onBack, user }) {
             {/* Tiêu đề Đơn */}
             <div className="mt-8 mb-6 text-center">
               <h2 className="text-[16px] font-bold tracking-wide uppercase sm:text-[18px]">
-                ĐƠN XIN CẤP XÁC NHẬN HỌC SINH – SINH VIÊN
+                {requestType?.name ? requestType.name.toUpperCase() : 'ĐƠN XIN CẤP XÁC NHẬN HỌC SINH – SINH VIÊN'}
               </h2>
             </div>
 
@@ -840,8 +866,8 @@ function StudentConfirmationForm({ onBack, user }) {
                 <span className="font-bold whitespace-nowrap">Kính gửi:</span>
                 <span>- Ban Giám hiệu Trường Cao đẳng Việt Mỹ Hà Nội</span>
               </div>
-              <p className="pl-16">- Phòng đào tạo</p>
-              <p className="pl-16">- Bộ phận CTSV</p>
+              <p className="pl-16">- {requestType?.departmentName || 'Phòng Đào tạo & Quản lý Khoa học'}</p>
+              <p className="pl-16">- Phòng Công tác Sinh viên</p>
             </div>
 
             {/* Thân đơn */}
@@ -922,7 +948,11 @@ function StudentConfirmationForm({ onBack, user }) {
 
               {/* Lý do đề nghị cấp giấy */}
               <div className="pt-2">
-                <p>Em làm đơn này kính đề nghị nhà trường cấp giấy xác nhận HSSV với lý do:</p>
+                <p>
+                  Em làm đơn này kính đề nghị nhà trường{' '}
+                  {requestType?.name ? `xem xét và giải quyết ${requestType.name.toLowerCase()}` : 'cấp giấy xác nhận HSSV'}{' '}
+                  với lý do:
+                </p>
                 {formData.reason ? (
                   <p className="mt-1 min-h-[50px] text-justify italic">
                     {formData.reason}
@@ -939,9 +969,7 @@ function StudentConfirmationForm({ onBack, user }) {
 
               {/* Lời cam đoan */}
               <p className="pt-2 text-justify indent-8">
-                Em xin cam đoan sử dụng giấy chứng nhận sinh viên đúng theo lý do đã trình bày trên.
-                Nếu em tự ý nghỉ học hoặc vi phạm nội quy nhà trường bị buộc thôi học, giấy xác nhận này
-                sẽ không có giá trị sử dụng.
+                Em xin cam đoan các thông tin đã khai trên là hoàn toàn chính xác và sử dụng giấy tờ đúng mục đích. Nếu vi phạm, em xin hoàn toàn chịu trách nhiệm trước quy định của Nhà trường và pháp luật.
               </p>
               <p>Em xin trân thành cảm ơn!</p>
             </div>

@@ -1,4 +1,5 @@
 import logoCdvm from '../assets/images/logocđvm.jpg';
+import { formatCccd } from '../services/cmsService';
 
 const CAMPUS_OPTIONS = ['Cầu Giấy', 'Mỹ Đình', 'Trịnh Văn Bô', 'Phúc Diễn'];
 
@@ -71,8 +72,8 @@ function OfficialDocumentView({ request }) {
           <span className="font-bold whitespace-nowrap">Kính gửi:</span>
           <span>- Ban Giám hiệu Trường Cao đẳng Việt Mỹ Hà Nội</span>
         </div>
-        <p className="pl-16">- Phòng đào tạo</p>
-        <p className="pl-16">- Bộ phận CTSV</p>
+        <p className="pl-16">- {request.departmentName || 'Phòng Đào tạo & Quản lý Khoa học'}</p>
+        <p className="pl-16">- Phòng Công tác Sinh viên</p>
       </div>
 
       {/* Thân đơn chi tiết sinh viên đã điền */}
@@ -107,7 +108,7 @@ function OfficialDocumentView({ request }) {
         <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1">
           <div>
             <span>Số CCCD: </span>
-            <span>{request.idCardNumber || '001205012345'}</span>
+            <span>{formatCccd(request.idCardNumber) || '....................'}</span>
           </div>
           <div>
             <span>Ngày cấp: </span>
@@ -153,7 +154,11 @@ function OfficialDocumentView({ request }) {
 
         {/* Lý do đề nghị cấp giấy */}
         <div className="pt-2">
-          <p>Em làm đơn này kính đề nghị nhà trường cấp giấy xác nhận HSSV với lý do:</p>
+          <p>
+            Em làm đơn này kính đề nghị nhà trường{' '}
+            {request.typeName ? `xem xét và giải quyết ${request.typeName.toLowerCase()}` : 'cấp giấy xác nhận HSSV'}{' '}
+            với lý do:
+          </p>
           <div className="mt-1 min-h-[45px] rounded-lg border border-slate-200 bg-slate-50/50 p-3 italic text-justify text-slate-900">
             {request.reason || '(Sinh viên chưa nhập lý do chi tiết)'}
           </div>
@@ -161,9 +166,7 @@ function OfficialDocumentView({ request }) {
 
         {/* Lời cam đoan */}
         <p className="pt-2 text-justify indent-8">
-          Em xin cam đoan sử dụng giấy chứng nhận sinh viên đúng theo lý do đã trình bày trên. Nếu em tự
-          ý nghỉ học hoặc vi phạm nội quy nhà trường bị buộc thôi học, giấy xác nhận này sẽ không có
-          giá trị sử dụng.
+          Em xin cam đoan các thông tin đã khai trên là hoàn toàn chính xác và sử dụng giấy tờ đúng mục đích. Nếu vi phạm, em xin hoàn toàn chịu trách nhiệm trước quy định của Nhà trường và pháp luật.
         </p>
         <p>Em xin trân thành cảm ơn!</p>
       </div>

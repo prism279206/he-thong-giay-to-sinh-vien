@@ -9,6 +9,7 @@ import {
   getStudentProfile,
   buildExpectedStudentEmail,
   verifyStudentEmailMatch,
+  formatCccd,
 } from './cmsService.js';
 
 const DEFAULT_PASSWORD = '123456';
@@ -214,26 +215,26 @@ export async function signIn(identifier, password) {
       };
     }
 
-    // 4.3 Nếu là sinh viên
-    if (studentCmsData || type === 'student_code') {
-      const student = studentCmsData || {
-        hoTen: 'Nguyễn Văn Tiến',
-        maSinhVien: cleanId,
-        lop: 'Cao đẳng CNTT K24',
-        khoa: 'Khoa Công nghệ',
-        nganh: 'Công nghệ thông tin',
-      };
+    // 4.3 Nếu là sinh viên (Bắt buộc phải có hồ sơ thực tế từ API CMS)
+    if (studentCmsData) {
+      const student = studentCmsData;
       return {
         data: {
-          user: { id: `mock-${student.maSinhVien}`, email: targetEmail },
+          user: { id: `cms-${student.maSinhVien}`, email: targetEmail },
           profile: {
-            id: `mock-${student.maSinhVien}`,
+            id: `cms-${student.maSinhVien}`,
             email: targetEmail,
             ma_sinh_vien: student.maSinhVien,
             ho_ten: student.hoTen,
-            lop: student.lop || 'Cao đẳng CNTT K24',
-            khoa: student.khoa || 'Khoa Công nghệ',
-            nganh: student.nganh || 'Công nghệ thông tin',
+            lop: student.lop || '',
+            khoa: student.khoa || '',
+            nganh: student.nganh || '',
+            khoa_hoc: student.khoaHoc || '',
+            ngay_sinh: student.ngaySinh || '',
+            cccd: formatCccd(student.cccd),
+            ngay_cap_cccd: student.ngayCapCccd || '',
+            noi_sinh: student.noiSinh || '',
+            sdt: student.sdt || '',
             role: 'student',
           },
         },
