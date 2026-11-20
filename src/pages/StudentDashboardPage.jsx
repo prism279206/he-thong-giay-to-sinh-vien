@@ -2,7 +2,6 @@ import { useState, useMemo, useEffect } from 'react';
 import {
   Home,
   FileText,
-  PenTool,
   User,
   LogOut,
   Search,
@@ -16,6 +15,7 @@ import {
   Menu,
   X,
   ChevronDown,
+  Eye,
 } from 'lucide-react';
 import { DEFAULT_LOGO_SRC } from './LoginPage';
 import RequestTypePicker from '../components/RequestTypePicker';
@@ -34,6 +34,77 @@ function formatDob(dateStr) {
     return `${d}/${m}/${y}`;
   }
   return dateStr;
+}
+
+/**
+ * Thanh tiến trình 4 chặng theo dõi hồ sơ của sinh viên
+ */
+function WorkflowTimeline({ status }) {
+  let currentStep = 1;
+  if (status === 'pending') currentStep = 2; // Đang chờ phân luồng
+  else if (status === 'in_progress') currentStep = 3; // Đang xử lý tại GV
+  else if (status === 'teacher_approved') currentStep = 4; // Chờ Một Cửa đóng dấu
+  else if (status === 'completed') currentStep = 5; // Hoàn tất 4/4
+  else if (status === 'rejected') currentStep = -1;
+
+  const steps = [
+    { num: 1, label: 'Nộp đơn', sub: 'Sinh viên' },
+    { num: 2, label: 'Tiếp nhận', sub: 'Một Cửa' },
+    { num: 3, label: 'Ký duyệt', sub: 'GVCN' },
+    { num: 4, label: 'Đóng dấu', sub: 'Một Cửa' },
+  ];
+
+  return (
+    <div className="rounded-xl border border-slate-200/80 bg-white p-3.5 shadow-xs">
+      <div className="mb-2 text-[11px] font-bold uppercase tracking-wider text-slate-400">
+        Tiến trình giải quyết hồ sơ (4 chặng)
+      </div>
+      <div className="flex items-center justify-between">
+        {steps.map((st, idx) => {
+          const isDone = currentStep > st.num || currentStep === 5;
+          const isCurrent = currentStep === st.num;
+          return (
+            <div key={st.num} className="flex flex-1 items-center">
+              <div className="flex flex-col items-center">
+                <div
+                  className={`flex h-7 w-7 items-center justify-center rounded-full text-xs font-bold transition-all ${
+                    isDone
+                      ? 'bg-emerald-600 text-white shadow-xs'
+                      : isCurrent
+                      ? 'bg-[#2563EB] text-white ring-4 ring-blue-100 animate-pulse'
+                      : 'bg-slate-100 text-slate-400'
+                  }`}
+                >
+                  {isDone ? '✓' : st.num}
+                </div>
+                <span
+                  className={`mt-1 text-[11px] font-semibold text-center leading-tight ${
+                    isDone
+                      ? 'text-emerald-700'
+                      : isCurrent
+                      ? 'text-[#2563EB]'
+                      : 'text-slate-400'
+                  }`}
+                >
+                  {st.label}
+                </span>
+                <span className="text-[9px] text-slate-400">{st.sub}</span>
+              </div>
+              {idx < steps.length - 1 && (
+                <div
+                  className={`h-0.5 flex-1 mx-1.5 transition-colors ${
+                    currentStep > st.num || currentStep === 5
+                      ? 'bg-emerald-500'
+                      : 'bg-slate-200'
+                  }`}
+                />
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
 }
 
 // Menu điều hướng bên trái (đã loại bỏ mục lưu trữ chữ ký sinh viên theo yêu cầu bảo mật)
@@ -699,6 +770,9 @@ function StudentDashboardPage({ user, logoSrc = DEFAULT_LOGO_SRC, onLogout }) {
             </div>
 
             <div className="mt-4 space-y-3.5 text-sm">
+              {/* Thanh tiến trình 4 chặng theo dõi trực quan */}
+              <WorkflowTimeline status={selectedRequest.status} />
+
               <div className="flex items-center justify-between rounded-xl bg-slate-50 p-3">
                 <span className="text-slate-500 font-medium">Trạng thái xử lý:</span>
                 <StatusBadge

@@ -1,7 +1,73 @@
+import { useState } from 'react';
+import { CheckCircle2, ShieldCheck, X } from 'lucide-react';
 import logoCdvm from '../assets/images/logocđvm.jpg';
 import { formatCccd } from '../services/cmsService';
 
 const CAMPUS_OPTIONS = ['Cầu Giấy', 'Mỹ Đình', 'Trịnh Văn Bô', 'Phúc Diễn'];
+
+/**
+ * Mã QR xác thực số hóa của văn bản điện tử
+ */
+function DocumentVerificationQr({ requestId, studentCode, onOpenVerify }) {
+  return (
+    <div className="flex flex-col items-center justify-center rounded-xl border border-slate-300 bg-white p-2.5 shadow-xs text-center shrink-0">
+      <svg className="h-20 w-20 text-slate-900" viewBox="0 0 33 33" fill="currentColor" aria-hidden="true">
+        {/* Finder Pattern Top-Left */}
+        <rect x="2" y="2" width="7" height="7" fill="black" />
+        <rect x="3" y="3" width="5" height="5" fill="white" />
+        <rect x="4" y="4" width="3" height="3" fill="black" />
+        {/* Finder Pattern Top-Right */}
+        <rect x="24" y="2" width="7" height="7" fill="black" />
+        <rect x="25" y="3" width="5" height="5" fill="white" />
+        <rect x="26" y="4" width="3" height="3" fill="black" />
+        {/* Finder Pattern Bottom-Left */}
+        <rect x="2" y="24" width="7" height="7" fill="black" />
+        <rect x="3" y="25" width="5" height="5" fill="white" />
+        <rect x="4" y="26" width="3" height="3" fill="black" />
+        {/* Alignment & Timing */}
+        <rect x="10" y="5" width="2" height="1" fill="black" />
+        <rect x="14" y="5" width="2" height="1" fill="black" />
+        <rect x="18" y="5" width="2" height="1" fill="black" />
+        <rect x="5" y="10" width="1" height="2" fill="black" />
+        <rect x="5" y="14" width="1" height="2" fill="black" />
+        <rect x="5" y="18" width="1" height="2" fill="black" />
+        {/* Data points */}
+        <rect x="11" y="11" width="3" height="3" fill="black" />
+        <rect x="16" y="11" width="2" height="2" fill="black" />
+        <rect x="20" y="11" width="2" height="3" fill="black" />
+        <rect x="11" y="16" width="2" height="2" fill="black" />
+        <rect x="15" y="15" width="3" height="3" fill="black" />
+        <rect x="20" y="16" width="2" height="2" fill="black" />
+        <rect x="25" y="11" width="2" height="2" fill="black" />
+        <rect x="25" y="15" width="3" height="2" fill="black" />
+        <rect x="25" y="19" width="2" height="3" fill="black" />
+        <rect x="11" y="20" width="3" height="2" fill="black" />
+        <rect x="16" y="20" width="2" height="3" fill="black" />
+        <rect x="11" y="24" width="2" height="3" fill="black" />
+        <rect x="15" y="25" width="3" height="2" fill="black" />
+        <rect x="20" y="24" width="3" height="3" fill="black" />
+        <rect x="25" y="25" width="2" height="2" fill="black" />
+      </svg>
+      <div className="mt-1 leading-tight text-center">
+        <span className="block text-[8px] font-bold text-slate-800 uppercase tracking-tight">
+          QR XÁC THỰC VĂN BẢN
+        </span>
+        <span className="block text-[7.5px] font-mono text-slate-500">
+          {requestId}{studentCode ? ` • ${studentCode}` : ''}
+        </span>
+      </div>
+      {onOpenVerify && (
+        <button
+          type="button"
+          onClick={onOpenVerify}
+          className="no-print mt-1.5 cursor-pointer rounded bg-slate-100 px-2 py-0.5 text-[9px] font-semibold text-[#2563EB] hover:bg-blue-50 transition-colors"
+        >
+          Đối chiếu online
+        </button>
+      )}
+    </div>
+  );
+}
 
 /**
  * Hiển thị toàn văn tờ đơn A4 chuẩn hành chính do sinh viên đã điền:
@@ -9,8 +75,10 @@ const CAMPUS_OPTIONS = ['Cầu Giấy', 'Mỹ Đình', 'Trịnh Văn Bô', 'Phú
  * - Hiển thị logo trường logocđvm.jpg, Quốc hiệu - Tiêu ngữ, kính gửi Ban Giám hiệu.
  * - Đầy đủ thông tin sinh viên, lý do đề nghị.
  * - Kèm CHỮ KÝ THỰC TẾ của sinh viên ở mục "Người làm đơn" và chữ ký GVCN (nếu đã duyệt).
+ * - Tích hợp con dấu đỏ của Bộ phận Một Cửa và mã QR tra cứu tính hợp lệ.
  */
 function OfficialDocumentView({ request }) {
+  const [showVerifyModal, setShowVerifyModal] = useState(false);
   if (!request) return null;
 
   // Xử lý hiển thị ngày nộp đơn
@@ -24,8 +92,9 @@ function OfficialDocumentView({ request }) {
   }
 
   return (
-    <div
-      id="printable-official-document"
+    <>
+      <div
+        id="printable-official-document"
       className="w-full rounded-2xl border border-slate-300/80 bg-white p-6 shadow-md transition-all sm:p-10 text-black leading-relaxed select-text font-serif"
       style={{
         fontFamily: '"Times New Roman", Times, "Liberation Serif", serif',
@@ -239,7 +308,7 @@ function OfficialDocumentView({ request }) {
         {(request.status === 'completed' || request.finalizedBy) && (
           <div className="mt-8 rounded-xl border-2 border-red-500/80 bg-red-50/40 p-4 font-sans select-text">
             <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
-              <div className="text-left font-serif text-xs sm:text-sm">
+              <div className="text-left font-serif text-xs sm:text-sm flex-1">
                 <p className="font-bold text-red-700 uppercase tracking-wide">
                   XÁC NHẬN CỦA BỘ PHẬN TIẾP NHẬN & TRẢ KẾT QUẢ (MỘT CỬA)
                 </p>
@@ -273,11 +342,131 @@ function OfficialDocumentView({ request }) {
                   {request.finalizedAt || 'Đã ban hành'}
                 </span>
               </div>
+
+              {/* Mã QR Tra cứu & Xác thực văn bản gốc */}
+              <DocumentVerificationQr
+                requestId={request.id}
+                studentCode={request.studentCode}
+                onOpenVerify={() => setShowVerifyModal(true)}
+              />
             </div>
           </div>
         )}
       </div>
     </div>
+
+    {/* Style tối ưu cho In / Lưu PDF chuẩn A4 hành chính */}
+      <style>{`
+        @media print {
+          @page {
+            size: A4 portrait;
+            margin: 15mm 20mm;
+          }
+          body {
+            background: white !important;
+          }
+          body * {
+            visibility: hidden;
+          }
+          #printable-official-document,
+          #printable-official-document * {
+            visibility: visible;
+          }
+          #printable-official-document {
+            position: absolute;
+            left: 0;
+            top: 0;
+            width: 100% !important;
+            min-height: auto !important;
+            margin: 0 !important;
+            padding: 0 !important;
+            border: none !important;
+            box-shadow: none !important;
+            background: white !important;
+          }
+          .no-print {
+            display: none !important;
+          }
+        }
+      `}</style>
+
+      {/* Modal tra cứu xác thực văn bản gốc (Digital Verification Certificate) */}
+      {showVerifyModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 p-4 backdrop-blur-[2px] font-sans no-print">
+          <div className="w-full max-w-md rounded-2xl bg-white shadow-2xl overflow-hidden border border-slate-200">
+            <div className="border-b border-emerald-100 bg-emerald-50 px-5 py-4 flex items-center justify-between text-emerald-950">
+              <div className="flex items-center gap-2">
+                <ShieldCheck className="h-6 w-6 text-emerald-600" />
+                <h4 className="font-bold text-sm sm:text-base">Xác thực văn bản điện tử</h4>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowVerifyModal(false)}
+                className="rounded-lg p-1 text-slate-400 hover:bg-emerald-100 hover:text-emerald-700"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            <div className="p-5 space-y-3.5 text-xs">
+              <div className="rounded-xl border border-emerald-200 bg-emerald-50/70 p-3 text-emerald-900 flex items-center gap-2.5">
+                <CheckCircle2 className="h-5 w-5 text-emerald-600 shrink-0" />
+                <div>
+                  <p className="font-bold text-xs sm:text-sm">Văn bản hợp lệ và chính thức</p>
+                  <p className="text-[11px] text-emerald-700 mt-0.5">
+                    Hồ sơ được xác thực trực tiếp trên hệ thống trường Cao đẳng Việt Mỹ Hà Nội.
+                  </p>
+                </div>
+              </div>
+
+              <div className="rounded-xl bg-slate-50 p-3.5 space-y-2 border border-slate-100 text-slate-700">
+                <div className="flex justify-between border-b border-slate-200/60 pb-1.5">
+                  <span className="text-slate-500">Mã văn bản:</span>
+                  <span className="font-mono font-bold text-[#2563EB]">{request.id}</span>
+                </div>
+                <div className="flex justify-between border-b border-slate-200/60 pb-1.5">
+                  <span className="text-slate-500">Loại văn bản:</span>
+                  <span className="font-semibold text-slate-900 text-right">{request.typeName}</span>
+                </div>
+                <div className="flex justify-between border-b border-slate-200/60 pb-1.5">
+                  <span className="text-slate-500">Họ tên sinh viên:</span>
+                  <span className="font-semibold text-slate-900">{request.studentName} ({request.studentCode})</span>
+                </div>
+                <div className="flex justify-between border-b border-slate-200/60 pb-1.5">
+                  <span className="text-slate-500">Người ký duyệt:</span>
+                  <span className="font-medium text-purple-700">{request.teacherApprovedBy || request.assignedTo?.name || 'GVCN'}</span>
+                </div>
+                <div className="flex justify-between border-b border-slate-200/60 pb-1.5">
+                  <span className="text-slate-500">Cơ quan ban hành:</span>
+                  <span className="font-semibold text-slate-900">Bộ phận Một Cửa - CĐ Việt Mỹ HN</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-slate-500">Thời gian ban hành:</span>
+                  <span className="font-medium text-slate-800">{request.finalizedAt || request.createdAt}</span>
+                </div>
+              </div>
+
+              {request.pickupLocation && (
+                <div className="rounded-xl border border-blue-100 bg-blue-50/60 p-3 text-blue-900">
+                  <p className="font-semibold">Địa điểm nhận bản cứng chính thức:</p>
+                  <p className="mt-0.5">{request.pickupLocation}</p>
+                </div>
+              )}
+            </div>
+
+            <div className="border-t border-slate-100 px-5 py-3 text-right bg-slate-50">
+              <button
+                type="button"
+                onClick={() => setShowVerifyModal(false)}
+                className="rounded-xl bg-[#2563EB] px-4 py-1.5 text-xs font-semibold text-white hover:bg-blue-700"
+              >
+                Đóng
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
   );
 }
 

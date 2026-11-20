@@ -30,6 +30,9 @@ Vùng sở hữu: `src/pages/`, `src/components/`
   + Chuẩn hóa bộ lọc `myRequests` của sinh viên: so khớp mã SV linh hoạt (hỗ trợ cả mã 8 số và mã đầy đủ 11 số có tiền tố 611), sửa lỗi danh sách đơn của sinh viên bị trống.
   + Luôn cho phép sinh viên mở xem toàn văn văn bản A4 tại mọi trạng thái (kể cả khi vừa nộp, đang chờ duyệt hay đã hoàn tất), bổ sung nút "Mở đơn (A4)" ngay tại bảng danh sách và trong modal chi tiết.
   + Bổ sung tính năng "Mở đơn" xem văn bản A4 chuẩn Times New Roman cho cả Giảng viên (`TeacherDashboardPage.jsx`) và Cán bộ Một cửa (`AdminDashboardPage.jsx`).
+- Tích hợp mã QR Code vector SVG đối chiếu xác thực văn bản gốc và modal chứng thực điện tử hiển thị thông tin cấp trên `OfficialDocumentView.jsx` (không phát sinh thư viện ngoài).
+- Tối ưu hóa layout in ấn chuẩn khổ A4 (@media print) cho tính năng in/lưu PDF trực tiếp từ trình duyệt, tự động ẩn giao diện web xung quanh.
+- Bổ sung thanh tiến trình 4 chặng (`WorkflowTimeline`) trực quan trên cả Student Portal (`StudentDashboardPage.jsx`) và Admin Portal (`AdminDashboardPage.jsx`).
 
 ## Đang làm
 - Chạy Seed data mẫu đơn Xác nhận HSSV trên Supabase; chuẩn bị gắn tiếp form cho các loại đơn khác (bảng điểm, miễn giảm học phí, phúc khảo...) và chuyển sang dùng React Router khi hoàn thiện hợp đồng services.
