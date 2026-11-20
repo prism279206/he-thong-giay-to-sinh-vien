@@ -89,7 +89,18 @@ export async function signIn(identifier, password) {
   let targetEmail = value;
   let studentCmsData = null;
 
-  // 1. Nếu người dùng nhập Mã sinh viên (dãy số) -> Tra cứu hồ sơ CMS
+  // 1. Nếu người dùng nhập Mã cán bộ / Giảng viên -> Chuẩn hóa sang Email trường tương ứng
+  if (type === 'staff_code') {
+    if (value === 'QL001' || value === 'ADMIN') {
+      targetEmail = 'ql001@caodangvietmyhanoi.edu.vn';
+    } else if (value === 'GV001') {
+      targetEmail = 'maiant@caodangvietmyhanoi.edu.vn';
+    } else if (value === 'GV002') {
+      targetEmail = 'huong.do1@caodangvietmy.edu.vn';
+    }
+  }
+
+  // 2. Nếu người dùng nhập Mã sinh viên (dãy số) -> Tra cứu hồ sơ CMS
   if (type === 'student_code') {
     const cmsResult = await getStudentProfile(value);
     if (cmsResult.error) {
