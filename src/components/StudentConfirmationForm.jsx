@@ -315,7 +315,7 @@ function StudentConfirmationForm({ onBack, user, requestType }) {
           action: 'Nộp đơn trực tuyến',
           actor: `${formData.fullName.trim()} (Sinh viên)`,
           time: timeStr,
-          note: `Sinh viên đã hoàn tất ký điện tử và gửi đơn ${requestType?.name || 'xác nhận'} đến Ban Tiếp nhận Một cửa.`,
+          note: `Sinh viên đã hoàn tất ký điện tử và gửi đơn ${requestType?.name || 'xác nhận'} đến Quản trị viên.`,
         },
       ],
     };
@@ -324,7 +324,7 @@ function StudentConfirmationForm({ onBack, user, requestType }) {
     submitRequest(newRequestPayload);
 
     alert(
-      `Đã nộp ${requestType?.name || 'đơn'} thành công (Mã đơn: ${newRequestId})!\n\nDữ liệu đơn kèm chữ ký của bạn đã được chuyển tới Ban Tiếp nhận Một cửa (Admin) để thẩm định và phân phối tới Giảng viên/Phòng ban.`
+      `Đã nộp ${requestType?.name || 'đơn'} thành công (Mã đơn: ${newRequestId})!\n\nDữ liệu đơn kèm chữ ký của bạn đã được chuyển tới Quản trị viên (Admin) để thẩm định và phân phối tới Giảng viên/Phòng ban.`
     );
     if (onBack) onBack();
   };

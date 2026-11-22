@@ -42,7 +42,7 @@ export async function submitRequest(payload) {
         {
           request_id: payload.id,
           hanh_dong: 'Nộp đơn trực tuyến',
-          ghi_chu: 'Sinh viên đã hoàn tất ký điện tử và gửi đơn đến Ban Tiếp nhận Một cửa.',
+          ghi_chu: 'Sinh viên đã hoàn tất ký điện tử và gửi đơn đến Quản trị viên.',
         },
       ]);
     }
@@ -78,7 +78,7 @@ export async function listMyRequests(studentId) {
 }
 
 /**
- * Lấy toàn bộ hàng đợi đơn cho Cán bộ Một cửa và Giảng viên
+ * Lấy toàn bộ hàng đợi đơn cho Cán bộ Quản trị viên và Giảng viên
  */
 export async function listStaffRequests() {
   try {
@@ -99,7 +99,7 @@ export async function listStaffRequests() {
 }
 
 /**
- * Phân phát đơn tới Giảng viên hoặc Phòng ban (Cán bộ Một cửa)
+ * Phân phát đơn tới Giảng viên hoặc Phòng ban (Cán bộ Quản trị viên)
  */
 export async function dispatchRequest(requestId, targetInfo, urgency) {
   try {
@@ -156,7 +156,7 @@ export async function signAndApproveRequest(requestId, teacherSignature, teacher
 }
 
 /**
- * Cán bộ Quản lý Một cửa hoàn tất hồ sơ và thông báo qua web cho sinh viên
+ * Quản trị viên hoàn tất hồ sơ và thông báo qua web cho sinh viên
  */
 export async function finalizeAndNotifyStudentRequest(requestId, adminName, pickupInfo, adminNote) {
   try {
@@ -171,8 +171,8 @@ export async function finalizeAndNotifyStudentRequest(requestId, adminName, pick
     await supabase.from('request_step_logs').insert([
       {
         request_id: requestId,
-        hanh_dong: 'Đóng dấu & Ban hành (Một cửa)',
-        ghi_chu: adminNote || `Cán bộ Một cửa (${adminName}) đã đóng dấu và hoàn tất đơn cho sinh viên.`,
+        hanh_dong: 'Đóng dấu & Ban hành (Quản trị viên)',
+        ghi_chu: adminNote || `Cán bộ Quản trị viên (${adminName}) đã đóng dấu và hoàn tất đơn cho sinh viên.`,
       },
     ]);
   } catch (err) {

@@ -119,6 +119,15 @@ export async function signIn(identifier, password) {
     targetEmail = buildExpectedStudentEmail(studentCmsData.hoTen, studentCmsData.maSinhVien);
   }
 
+  // 1.1 Nếu người dùng nhập Mã cán bộ / Giảng viên (ví dụ QL001, GV001, ADMIN...)
+  if (type === 'staff_code') {
+    if (value.startsWith('QL') || value.startsWith('AD') || value === 'ADMIN') {
+      targetEmail = 'ql001@caodangvietmyhanoi.edu.vn';
+    } else if (value.startsWith('GV') || value.startsWith('CB')) {
+      targetEmail = 'maiant@caodangvietmyhanoi.edu.vn';
+    }
+  }
+
   // 2. Nếu người dùng nhập Email sinh viên -> Đối chiếu tên và số với hồ sơ
   if (type === 'email' && value.endsWith('@caodangvietmyhanoi.edu.vn')) {
     const username = value.split('@')[0];
@@ -192,7 +201,7 @@ export async function signIn(identifier, password) {
   // 4. Chế độ dự phòng khi tài khoản chưa được tạo trên Supabase hoặc đang chạy thử nghiệm
   // Mật khẩu mặc định là 123456
   if (cleanPass === DEFAULT_PASSWORD || cleanPass === '123456') {
-    // 4.1 Nếu là Cán bộ Quản lý Một cửa (mã admincdvmhn, admin, QL001 hoặc email admin@...)
+    // 4.1 Nếu là Quản trị viên (mã admincdvmhn, admin, QL001 hoặc email admin@...)
     const valLower = (value || '').toLowerCase();
     if (
       (type === 'staff_code' && (valLower === 'admincdvmhn' || valLower === 'admin' || valLower.startsWith('ql') || valLower.startsWith('ad'))) ||
@@ -206,7 +215,7 @@ export async function signIn(identifier, password) {
           profile: {
             id: 'mock-admin',
             email: adminEmail,
-            ho_ten: 'Cán bộ Quản trị Một cửa',
+            ho_ten: 'Quản trị viên',
             role: 'admin',
             ma_sinh_vien: 'admincdvmhn',
             phong_ban: 'Phòng Đào tạo & Quản lý Khoa học',

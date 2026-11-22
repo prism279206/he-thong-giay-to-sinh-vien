@@ -304,19 +304,19 @@ function OfficialDocumentView({ request }) {
           </div>
         </div>
 
-        {/* PHẦN ĐÓNG DẤU XÁC NHẬN CỦA BỘ PHẬN MỘT CỬA */}
+        {/* PHẦN ĐÓNG DẤU XÁC NHẬN CỦA BAN QUẢN TRỊ */}
         {(request.status === 'completed' || request.finalizedBy) && (
           <div className="mt-8 rounded-xl border-2 border-red-500/80 bg-red-50/40 p-4 font-sans select-text">
             <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
               <div className="text-left font-serif text-xs sm:text-sm flex-1">
                 <p className="font-bold text-red-700 uppercase tracking-wide">
-                  XÁC NHẬN CỦA BỘ PHẬN TIẾP NHẬN & TRẢ KẾT QUẢ (MỘT CỬA)
+                  XÁC NHẬN CỦA BAN QUẢN TRỊ
                 </p>
                 <p className="text-slate-800 mt-1">
                   Đã đối chiếu chữ ký GVCN, kiểm tra tính hợp lệ của hồ sơ và đóng dấu số ban hành.
                 </p>
                 <p className="text-slate-600 italic mt-0.5">
-                  Cán bộ phê duyệt: <strong className="font-semibold text-slate-800">{request.finalizedBy || 'Cán bộ Quản lý Một cửa'}</strong>
+                  Cán bộ phê duyệt: <strong className="font-semibold text-slate-800">{request.finalizedBy || 'Quản trị viên'}</strong>
                 </p>
                 {request.pickupLocation && (
                   <p className="mt-1.5 font-bold text-blue-800">
@@ -335,7 +335,7 @@ function OfficialDocumentView({ request }) {
                     ★ ĐÃ ĐÓNG DẤU ★
                   </div>
                   <div className="text-[7.5px] font-bold text-red-600 uppercase">
-                    BỘ PHẬN MỘT CỬA
+                    BAN QUẢN TRỊ
                   </div>
                 </div>
                 <span className="mt-1 text-[10px] font-bold text-red-700">

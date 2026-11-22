@@ -27,6 +27,9 @@ import OfficialDocumentView from '../components/OfficialDocumentView';
 import {
   getStoredRequests,
   signAndApproveByTeacher,
+  getStoredNotifications,
+  markNotificationAsRead,
+  markAllNotificationsAsRead,
 } from '../components/mockRequestsStore';
 
 /**
@@ -91,7 +94,7 @@ const STATUS_FILTER_OPTIONS = [
   { value: 'all', label: 'Tất cả trạng thái' },
   { value: 'pending', label: 'Chờ tiếp nhận' },
   { value: 'in_progress', label: 'Đang xử lý' },
-  { value: 'teacher_approved', label: 'GV đã duyệt (Chờ Một cửa)' },
+  { value: 'teacher_approved', label: 'GV đã duyệt (Chờ Quản trị viên)' },
   { value: 'completed', label: 'Đã hoàn thành' },
   { value: 'overdue', label: 'Quá hạn' },
 ];
@@ -169,7 +172,7 @@ function StatusPill({ status, label }) {
     return (
       <span className="inline-flex items-center gap-1.5 rounded-full bg-amber-50 px-2.5 py-1 text-xs font-semibold text-amber-700">
         <span className="h-1.5 w-1.5 rounded-full bg-amber-500 animate-pulse" />
-        <span>GV đã duyệt (Chờ Một cửa đóng dấu)</span>
+        <span>GV đã duyệt (Chờ Quản trị viên đóng dấu)</span>
       </span>
     );
   }
@@ -218,10 +221,37 @@ function TeacherDashboardPage({ user, logoSrc = DEFAULT_LOGO_SRC, onLogout }) {
   const [requestsList, setRequestsList] = useState(() => getStoredRequests());
   const [actionSuccessMsg, setActionSuccessMsg] = useState('');
 
-  // Tự động đồng bộ danh sách đơn khi chuyển tab hoặc mở trang
+  // Quản lý thông báo phân công cho Giảng viên
+  const teacherId = user?.teacherCode || 'GV001';
+  const [showTeacherNotifications, setShowTeacherNotifications] = useState(false);
+  const [teacherNotifications, setTeacherNotifications] = useState(() =>
+    getStoredNotifications(teacherId)
+  );
+
+  // Tự động đồng bộ danh sách đơn và thông báo khi chuyển tab hoặc khi có cập nhật
   useEffect(() => {
     setRequestsList(getStoredRequests());
-  }, [activeTab]);
+    setTeacherNotifications(getStoredNotifications(teacherId));
+  }, [activeTab, teacherId]);
+
+  useEffect(() => {
+    const syncData = () => {
+      setRequestsList(getStoredRequests());
+      setTeacherNotifications(getStoredNotifications(teacherId));
+    };
+    window.addEventListener('vmh_notifications_updated', syncData);
+    window.addEventListener('vmh_requests_updated', syncData);
+    window.addEventListener('storage', syncData);
+    return () => {
+      window.removeEventListener('vmh_notifications_updated', syncData);
+      window.removeEventListener('vmh_requests_updated', syncData);
+      window.removeEventListener('storage', syncData);
+    };
+  }, [teacherId]);
+
+  const teacherUnreadCount = useMemo(() => {
+    return teacherNotifications.filter((n) => !n.isRead).length;
+  }, [teacherNotifications]);
 
   // Thống kê số lượng đơn động
   const stats = useMemo(() => {
@@ -320,7 +350,7 @@ function TeacherDashboardPage({ user, logoSrc = DEFAULT_LOGO_SRC, onLogout }) {
     setSelectedStatus('all');
   };
 
-  // Thao tác ký duyệt đơn (GV ký duyệt xong chuyển Một cửa kiểm tra, đóng dấu)
+  // Thao tác ký duyệt đơn (GV ký duyệt xong chuyển Quản trị viên kiểm tra, đóng dấu)
   const handleApproveRequest = (reqId) => {
     const updated = signAndApproveByTeacher(reqId, {
       name: teacherName,
@@ -328,7 +358,7 @@ function TeacherDashboardPage({ user, logoSrc = DEFAULT_LOGO_SRC, onLogout }) {
     });
     setRequestsList(updated);
     setActionSuccessMsg(
-      `Đã ký số phê duyệt đơn ${reqId}! Hồ sơ đã được chuyển tiếp đến Ban Tiếp nhận Một cửa để đóng dấu và ban hành kết quả cho sinh viên.`
+      `Đã ký số phê duyệt đơn ${reqId}! Hồ sơ đã được chuyển tiếp đến Quản trị viên để đóng dấu và ban hành kết quả cho sinh viên.`
     );
     setTimeout(() => setActionSuccessMsg(''), 4500);
     setSelectedRequest(null);
@@ -393,9 +423,9 @@ function TeacherDashboardPage({ user, logoSrc = DEFAULT_LOGO_SRC, onLogout }) {
   );
 
   return (
-    <div className="flex min-h-screen bg-[#F4F7FE] text-slate-800">
+    <div className="flex min-h-screen bg-slate-900/5 text-slate-800">
       {/* Sidebar cho Desktop */}
-      <aside className="hidden w-64 shrink-0 border-r border-slate-200/70 bg-gradient-to-b from-[#F8FAFF] to-[#EEF4FF] lg:block">
+      <aside className="hidden w-64 shrink-0 border-r border-slate-200/80 bg-white/95 shadow-sm lg:block">
         <div className="sticky top-0 h-screen">{renderSidebarContent()}</div>
       </aside>
 
@@ -448,14 +478,99 @@ function TeacherDashboardPage({ user, logoSrc = DEFAULT_LOGO_SRC, onLogout }) {
           </div>
 
           <div className="flex shrink-0 items-center gap-3 sm:gap-5">
-            <button
-              type="button"
-              className="relative cursor-pointer rounded-xl p-2 text-slate-600 transition-colors hover:bg-slate-100"
-              aria-label="Thông báo"
-            >
-              <Bell className="h-5 w-5" strokeWidth={1.8} />
-              <span className="absolute top-1.5 right-2 h-2 w-2 rounded-full bg-red-500 ring-2 ring-white" />
-            </button>
+            {/* Chuông thông báo phân công cho Giảng viên */}
+            <div className="relative">
+              <button
+                type="button"
+                onClick={() => setShowTeacherNotifications((prev) => !prev)}
+                className="relative cursor-pointer rounded-xl p-2 text-slate-600 transition-colors hover:bg-slate-100"
+                aria-label="Thông báo"
+              >
+                <Bell className="h-5 w-5" strokeWidth={1.8} />
+                {teacherUnreadCount > 0 && (
+                  <span className="absolute -top-1 -right-1 flex h-5 min-w-[20px] items-center justify-center rounded-full bg-red-500 px-1.5 text-[11px] font-bold text-white shadow-xs ring-2 ring-white leading-none">
+                    {teacherUnreadCount > 99 ? '99+' : teacherUnreadCount}
+                  </span>
+                )}
+              </button>
+
+              {/* Popover danh sách thông báo phân công cho Giảng viên */}
+              {showTeacherNotifications && (
+                <div className="absolute right-0 top-full mt-2 z-50 w-80 sm:w-96 rounded-2xl border border-slate-200 bg-white p-4 shadow-2xl">
+                  <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+                    <div className="flex items-center gap-2">
+                      <Bell className="h-4 w-4 text-[#2563EB]" />
+                      <h4 className="text-sm font-bold text-slate-800">Thông báo phân công</h4>
+                    </div>
+                    {teacherNotifications.length > 0 && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          markAllNotificationsAsRead(teacherId);
+                          setTeacherNotifications(getStoredNotifications(teacherId));
+                        }}
+                        className="cursor-pointer text-xs font-semibold text-[#2563EB] hover:underline"
+                      >
+                        Đã đọc tất cả
+                      </button>
+                    )}
+                  </div>
+
+                  <div className="mt-3 max-h-72 space-y-2 overflow-y-auto">
+                    {teacherNotifications.length === 0 ? (
+                      <p className="py-6 text-center text-xs text-slate-400">
+                        Chưa có thông báo phân công nào gửi về.
+                      </p>
+                    ) : (
+                      teacherNotifications.map((notif) => (
+                        <div
+                          key={notif.id}
+                          className={`rounded-xl border p-3 text-xs transition-colors ${
+                            notif.isRead
+                              ? 'border-slate-100 bg-slate-50/60 text-slate-600'
+                              : 'border-blue-200 bg-blue-50/50 text-slate-800 shadow-xs'
+                          }`}
+                        >
+                          <div className="flex items-start justify-between gap-2">
+                            <p className="font-bold text-slate-800">{notif.title}</p>
+                            {!notif.isRead && (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  markNotificationAsRead(notif.id);
+                                  setTeacherNotifications(getStoredNotifications(teacherId));
+                                }}
+                                className="cursor-pointer text-[10px] font-semibold text-[#2563EB] hover:underline"
+                              >
+                                Đã xem
+                              </button>
+                            )}
+                          </div>
+                          <p className="mt-1 leading-relaxed text-slate-600">{notif.message || notif.body}</p>
+                          <div className="mt-2 flex items-center justify-between text-[10px] text-slate-400">
+                            <span>{notif.time}</span>
+                            {notif.requestId && (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  markNotificationAsRead(notif.id);
+                                  setTeacherNotifications(getStoredNotifications(teacherId));
+                                  setShowTeacherNotifications(false);
+                                  setActiveTab('pending-requests');
+                                }}
+                                className="cursor-pointer font-semibold text-[#2563EB] hover:underline"
+                              >
+                                Mở hồ sơ &rarr;
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
 
             {/* Thông tin Giảng viên */}
             <div className="flex items-center gap-2.5">
@@ -691,8 +806,7 @@ function TeacherDashboardPage({ user, logoSrc = DEFAULT_LOGO_SRC, onLogout }) {
                   <table className="w-full min-w-[700px] text-left text-sm">
                     <thead>
                       <tr className="border-b border-slate-100 text-xs font-semibold text-slate-500">
-                        <th className="py-3 pr-4 pl-2">Mã đơn</th>
-                        <th className="px-4 py-3">Loại đơn</th>
+                        <th className="py-3 pr-4 pl-2 font-semibold text-slate-700">Loại đơn</th>
                         <th className="px-4 py-3">Sinh viên</th>
                         <th className="px-4 py-3">Ngày tạo</th>
                         <th className="px-4 py-3">Trạng thái</th>
@@ -702,17 +816,14 @@ function TeacherDashboardPage({ user, logoSrc = DEFAULT_LOGO_SRC, onLogout }) {
                     <tbody className="divide-y divide-slate-100">
                       {filteredRequests.length === 0 ? (
                         <tr>
-                          <td colSpan={6} className="py-8 text-center text-sm text-slate-500">
+                          <td colSpan={5} className="py-8 text-center text-sm text-slate-500">
                             Không tìm thấy hồ sơ nào khớp với bộ lọc hiện tại.
                           </td>
                         </tr>
                       ) : (
                         filteredRequests.map((req) => (
                           <tr key={req.id} className="transition-colors hover:bg-slate-50/70">
-                            <td className="py-3.5 pr-4 pl-2 font-semibold text-slate-700 whitespace-nowrap">
-                              {req.id}
-                            </td>
-                            <td className="px-4 py-3.5 text-slate-700 whitespace-nowrap">
+                            <td className="py-3.5 pr-4 pl-2 font-semibold text-slate-800 whitespace-nowrap">
                               {req.typeName}
                             </td>
                             <td className="px-4 py-3.5 whitespace-nowrap">
@@ -775,8 +886,7 @@ function TeacherDashboardPage({ user, logoSrc = DEFAULT_LOGO_SRC, onLogout }) {
                 <table className="w-full min-w-[700px] text-left text-sm">
                   <thead>
                     <tr className="border-b border-slate-100 text-xs font-semibold text-slate-500">
-                      <th className="py-3 pr-4 pl-2">Mã đơn</th>
-                      <th className="px-4 py-3">Loại đơn</th>
+                      <th className="py-3 pr-4 pl-2 font-semibold text-slate-700">Loại đơn</th>
                       <th className="px-4 py-3">Sinh viên</th>
                       <th className="px-4 py-3">Lớp / Ngành</th>
                       <th className="px-4 py-3">Trạng thái</th>
@@ -786,8 +896,7 @@ function TeacherDashboardPage({ user, logoSrc = DEFAULT_LOGO_SRC, onLogout }) {
                   <tbody className="divide-y divide-slate-100">
                     {filteredRequests.map((req) => (
                       <tr key={req.id} className="transition-colors hover:bg-slate-50/70">
-                        <td className="py-3.5 pr-4 pl-2 font-semibold text-slate-700">{req.id}</td>
-                        <td className="px-4 py-3.5 text-slate-700">{req.typeName}</td>
+                        <td className="py-3.5 pr-4 pl-2 font-semibold text-slate-800">{req.typeName}</td>
                         <td className="px-4 py-3.5">
                           <p className="font-semibold text-slate-800">{req.studentName}</p>
                           <p className="text-xs text-slate-400">MSSV: {req.studentCode}</p>

@@ -25,6 +25,7 @@ import {
   getStoredRequests,
   getStoredNotifications,
   markNotificationAsRead,
+  markAllNotificationsAsRead,
 } from '../components/mockRequestsStore';
 
 function formatDob(dateStr) {
@@ -128,7 +129,7 @@ const STATUS_BADGE_MAP = {
   teacher_approved: {
     pillClass: 'bg-indigo-50 text-indigo-700',
     dotClass: 'bg-indigo-500 animate-pulse',
-    defaultLabel: 'GV đã duyệt (Chờ Một cửa đóng dấu)',
+    defaultLabel: 'GV đã duyệt (Chờ Quản trị viên đóng dấu)',
   },
   completed: {
     pillClass: 'bg-emerald-50 text-emerald-700',
@@ -231,7 +232,7 @@ function StudentDashboardPage({ user, logoSrc = DEFAULT_LOGO_SRC, onLogout }) {
   const [showNotifications, setShowNotifications] = useState(false);
   const [viewFullDoc, setViewFullDoc] = useState(false);
 
-  // Đọc danh sách đơn từ localStorage dùng chung (đồng bộ với Một cửa và Giảng viên)
+  // Đọc danh sách đơn từ localStorage dùng chung (đồng bộ với Quản trị viên và Giảng viên)
   const [storedRequests, setStoredRequests] = useState(() => getStoredRequests());
   const [notifications, setNotifications] = useState(() =>
     getStoredNotifications(user?.studentCode)
@@ -257,6 +258,21 @@ function StudentDashboardPage({ user, logoSrc = DEFAULT_LOGO_SRC, onLogout }) {
     setStoredRequests(getStoredRequests());
     setNotifications(getStoredNotifications(user?.studentCode));
   }, [activeTab, user?.studentCode]);
+
+  useEffect(() => {
+    const syncData = () => {
+      setStoredRequests(getStoredRequests());
+      setNotifications(getStoredNotifications(user?.studentCode));
+    };
+    window.addEventListener('vmh_notifications_updated', syncData);
+    window.addEventListener('vmh_requests_updated', syncData);
+    window.addEventListener('storage', syncData);
+    return () => {
+      window.removeEventListener('vmh_notifications_updated', syncData);
+      window.removeEventListener('vmh_requests_updated', syncData);
+      window.removeEventListener('storage', syncData);
+    };
+  }, [user?.studentCode]);
 
   const unreadNotifCount = useMemo(() => {
     return notifications.filter((n) => !n.isRead).length;
@@ -373,8 +389,7 @@ function StudentDashboardPage({ user, logoSrc = DEFAULT_LOGO_SRC, onLogout }) {
       <table className="w-full min-w-[640px] text-left text-sm">
         <thead>
           <tr className="border-b border-slate-100 text-xs font-semibold text-slate-500">
-            <th className="py-3 pr-4 pl-2">Mã đơn</th>
-            <th className="px-4 py-3">Loại đơn</th>
+            <th className="py-3 pr-4 pl-2 font-semibold text-slate-700">Loại đơn</th>
             <th className="px-4 py-3">Ngày tạo</th>
             <th className="px-4 py-3">Trạng thái</th>
             <th className="py-3 pr-2 pl-4 text-right">Thao tác</th>
@@ -383,15 +398,14 @@ function StudentDashboardPage({ user, logoSrc = DEFAULT_LOGO_SRC, onLogout }) {
         <tbody className="divide-y divide-slate-100">
           {requests.length === 0 ? (
             <tr>
-              <td colSpan={5} className="py-8 text-center text-sm text-slate-500">
+              <td colSpan={4} className="py-8 text-center text-sm text-slate-500">
                 Không có đơn nào khớp với từ khóa tìm kiếm.
               </td>
             </tr>
           ) : (
             requests.map((req) => (
               <tr key={req.id} className="transition-colors hover:bg-slate-50/70">
-                <td className="py-3.5 pr-4 pl-2 font-semibold text-slate-700">{req.id}</td>
-                <td className="px-4 py-3.5 text-slate-700">{req.typeName}</td>
+                <td className="py-3.5 pr-4 pl-2 font-semibold text-slate-800">{req.typeName}</td>
                 <td className="px-4 py-3.5 whitespace-nowrap text-slate-500">{req.createdAt}</td>
                 <td className="px-4 py-3.5 whitespace-nowrap">
                   <StatusBadge
@@ -430,9 +444,9 @@ function StudentDashboardPage({ user, logoSrc = DEFAULT_LOGO_SRC, onLogout }) {
   );
 
   return (
-    <div className="flex min-h-screen bg-[#F4F7FE] text-slate-800">
+    <div className="flex min-h-screen bg-slate-900/5 text-slate-800">
       {/* Sidebar cho màn hình lớn */}
-      <aside className="hidden w-64 shrink-0 border-r border-slate-200/70 bg-gradient-to-b from-[#F8FAFF] to-[#EEF4FF] lg:block">
+      <aside className="hidden w-64 shrink-0 border-r border-slate-200/80 bg-white/95 shadow-sm lg:block">
         <div className="sticky top-0 h-screen">{renderSidebarContent()}</div>
       </aside>
 
@@ -494,8 +508,8 @@ function StudentDashboardPage({ user, logoSrc = DEFAULT_LOGO_SRC, onLogout }) {
               >
                 <Bell className="h-5 w-5" strokeWidth={1.8} />
                 {unreadNotifCount > 0 && (
-                  <span className="absolute -top-0.5 -right-0.5 flex h-4 min-w-[16px] items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold text-white ring-2 ring-white">
-                    {unreadNotifCount}
+                  <span className="absolute -top-1 -right-1 flex h-5 min-w-[20px] items-center justify-center rounded-full bg-red-500 px-1.5 text-[11px] font-bold text-white shadow-xs ring-2 ring-white leading-none">
+                    {unreadNotifCount > 99 ? '99+' : unreadNotifCount}
                   </span>
                 )}
               </button>
@@ -508,9 +522,23 @@ function StudentDashboardPage({ user, logoSrc = DEFAULT_LOGO_SRC, onLogout }) {
                       <Bell className="h-4 w-4 text-[#2563EB]" />
                       <h4 className="text-sm font-bold text-slate-800">Thông báo từ Nhà trường</h4>
                     </div>
-                    <span className="rounded-full bg-blue-50 px-2 py-0.5 text-xs font-semibold text-[#2563EB]">
-                      {notifications.length} tin
-                    </span>
+                    <div className="flex items-center gap-2">
+                      {unreadNotifCount > 0 && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            markAllNotificationsAsRead(user?.studentCode);
+                            setNotifications(getStoredNotifications(user?.studentCode));
+                          }}
+                          className="cursor-pointer text-xs font-semibold text-[#2563EB] hover:underline"
+                        >
+                          Đã đọc tất cả
+                        </button>
+                      )}
+                      <span className="rounded-full bg-blue-50 px-2 py-0.5 text-xs font-semibold text-[#2563EB]">
+                        {notifications.length} tin
+                      </span>
+                    </div>
                   </div>
 
                   <div className="mt-3 max-h-72 space-y-2 overflow-y-auto">
@@ -781,7 +809,7 @@ function StudentDashboardPage({ user, logoSrc = DEFAULT_LOGO_SRC, onLogout }) {
                 />
               </div>
 
-              {/* Thông báo trả kết quả từ Bộ phận Một cửa nếu đơn đã hoàn thành */}
+              {/* Thông báo trả kết quả từ Quản trị viên nếu đơn đã hoàn thành */}
               {selectedRequest.status === 'completed' && (
                 <div className="rounded-xl border border-emerald-200 bg-emerald-50/80 p-3.5 text-xs text-emerald-900 space-y-1.5">
                   <p className="font-bold flex items-center gap-1.5 text-emerald-800 text-sm">
@@ -789,7 +817,7 @@ function StudentDashboardPage({ user, logoSrc = DEFAULT_LOGO_SRC, onLogout }) {
                     Hồ sơ đã được phê duyệt & đóng dấu ban hành!
                   </p>
                   <p className="text-slate-700">
-                    Địa điểm nhận kết quả bản cứng: <strong className="text-emerald-800">{selectedRequest.pickupLocation || 'Phòng 102 - Tòa nhà A (Bộ phận Một Cửa)'}</strong>
+                    Địa điểm nhận kết quả bản cứng: <strong className="text-emerald-800">{selectedRequest.pickupLocation || 'Phòng 102 - Tòa nhà A (Phòng Đào tạo)'}</strong>
                   </p>
                   {selectedRequest.adminNote && (
                     <p className="italic text-slate-600 bg-white/70 p-2 rounded-lg border border-emerald-100">
@@ -799,7 +827,7 @@ function StudentDashboardPage({ user, logoSrc = DEFAULT_LOGO_SRC, onLogout }) {
                 </div>
               )}
 
-              {/* Thông báo nếu GV đã duyệt nhưng Một cửa đang thụ lý đóng dấu */}
+              {/* Thông báo nếu GV đã duyệt nhưng Quản trị viên đang thụ lý đóng dấu */}
               {selectedRequest.status === 'teacher_approved' && (
                 <div className="rounded-xl border border-indigo-200 bg-indigo-50/70 p-3.5 text-xs text-indigo-900 space-y-1">
                   <p className="font-bold flex items-center gap-1.5 text-indigo-800">
@@ -807,7 +835,7 @@ function StudentDashboardPage({ user, logoSrc = DEFAULT_LOGO_SRC, onLogout }) {
                     Giáo viên chủ nhiệm đã duyệt & ký số
                   </p>
                   <p className="text-slate-600">
-                    Hồ sơ đã được chuyển tự động về Bộ phận Một Cửa để đối chiếu và đóng dấu số. Hệ thống sẽ gửi thông báo đến bạn ngay khi Một Cửa ban hành.
+                    Hồ sơ đã được chuyển tự động về Quản trị viên để đối chiếu và đóng dấu số. Hệ thống sẽ gửi thông báo đến bạn ngay khi Quản trị viên ban hành.
                   </p>
                 </div>
               )}

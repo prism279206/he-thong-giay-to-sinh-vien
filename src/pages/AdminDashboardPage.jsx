@@ -39,6 +39,9 @@ import {
   getStoredRequestTypes,
   saveStoredRequestTypes,
   finalizeAndNotifyStudentByAdmin,
+  getStoredNotifications,
+  markNotificationAsRead,
+  markAllNotificationsAsRead,
 } from '../components/mockRequestsStore';
 
 /**
@@ -115,7 +118,7 @@ const STATUS_FILTER_OPTIONS = [
   { value: 'all', label: 'Tất cả trạng thái' },
   { value: 'pending', label: 'Chưa hoàn thành (Chờ tiếp nhận)' },
   { value: 'in_progress', label: 'Đang xử lý (Đã phân luồng)' },
-  { value: 'teacher_approved', label: 'GV đã duyệt (Chờ Một Cửa đóng dấu)' },
+  { value: 'teacher_approved', label: 'GV đã duyệt (Chờ Quản trị viên đóng dấu)' },
   { value: 'completed', label: 'Đã hoàn thành' },
   { value: 'overdue', label: 'Quá hạn' },
 ];
@@ -150,7 +153,7 @@ function AdminIllustration() {
       <circle cx="78" cy="88" r="16" fill="#A5C4FC" />
       <circle cx="64" cy="108" r="12" fill="#C5DAFD" />
 
-      {/* Tòa nhà quản trị Một Cửa (Admin Center) */}
+      {/* Tòa nhà quản trị Quản trị viên (Admin Center) */}
       <rect x="135" y="32" width="140" height="135" rx="12" fill="#FFFFFF" stroke="#D3E2FB" strokeWidth="2" />
       <rect x="155" y="24" width="100" height="16" rx="4" fill="#2563EB" />
       <circle cx="205" cy="32" r="4" fill="#FFFFFF" />
@@ -315,10 +318,36 @@ export default function AdminDashboardPage({ user, logoSrc = DEFAULT_LOGO_SRC, o
   const [requestsList, setRequestsList] = useState(() => getStoredRequests());
   const [actionSuccessMsg, setActionSuccessMsg] = useState('');
 
-  // Tự động đồng bộ danh sách đơn khi chuyển tab hoặc mở trang
+  // Quản lý thông báo gửi về cho Quản trị viên
+  const [showAdminNotifications, setShowAdminNotifications] = useState(false);
+  const [adminNotifications, setAdminNotifications] = useState(() =>
+    getStoredNotifications('admin')
+  );
+
+  // Tự động đồng bộ danh sách đơn và thông báo khi chuyển tab hoặc khi có cập nhật
   useEffect(() => {
     setRequestsList(getStoredRequests());
+    setAdminNotifications(getStoredNotifications('admin'));
   }, [activeTab]);
+
+  useEffect(() => {
+    const syncData = () => {
+      setRequestsList(getStoredRequests());
+      setAdminNotifications(getStoredNotifications('admin'));
+    };
+    window.addEventListener('vmh_notifications_updated', syncData);
+    window.addEventListener('vmh_requests_updated', syncData);
+    window.addEventListener('storage', syncData);
+    return () => {
+      window.removeEventListener('vmh_notifications_updated', syncData);
+      window.removeEventListener('vmh_requests_updated', syncData);
+      window.removeEventListener('storage', syncData);
+    };
+  }, []);
+
+  const adminUnreadCount = useMemo(() => {
+    return adminNotifications.filter((n) => !n.isRead).length;
+  }, [adminNotifications]);
 
   // Quản lý danh mục các loại đơn đang có trong hệ thống (lưu trữ vĩnh viễn trên localStorage)
   const [requestTypes, setRequestTypes] = useState(() => getStoredRequestTypes());
@@ -361,15 +390,15 @@ export default function AdminDashboardPage({ user, logoSrc = DEFAULT_LOGO_SRC, o
   const [isRejectModalOpen, setIsRejectModalOpen] = useState(false);
   const [rejectReason, setRejectReason] = useState('');
 
-  // Modal đóng dấu & thông báo cho sinh viên (Một cửa thụ lý sau khi GV ký)
+  // Modal đóng dấu & thông báo cho sinh viên (Quản trị viên thụ lý sau khi GV ký)
   const [isFinalizeModalOpen, setIsFinalizeModalOpen] = useState(false);
-  const [pickupLocation, setPickupLocation] = useState('Phòng 102 - Tòa nhà A (Bộ phận Một Cửa)');
+  const [pickupLocation, setPickupLocation] = useState('Phòng 102 - Tòa nhà A (Phòng Đào tạo)');
   const [adminFinalizeNote, setAdminFinalizeNote] = useState(
     'Đã đối chiếu xác nhận chữ ký của GVCN, đóng dấu số và hoàn tất xử lý. Sinh viên có thể đến nhận bản cứng hoặc tải bản số hóa.'
   );
 
   // Tên cán bộ quản lý
-  const adminName = user?.fullName || 'Cán bộ Quản lý Một cửa';
+  const adminName = user?.fullName || 'Quản trị viên';
   const adminInitial = 'QL';
 
   // Thống kê số lượng
@@ -745,7 +774,7 @@ export default function AdminDashboardPage({ user, logoSrc = DEFAULT_LOGO_SRC, o
   // Mở modal đóng dấu & ban hành kết quả cho sinh viên (khi GV đã duyệt xong)
   const handleOpenFinalize = (req) => {
     setSelectedRequest(req);
-    setPickupLocation('Phòng 102 - Tòa nhà A (Bộ phận Một Cửa)');
+    setPickupLocation('Phòng 102 - Tòa nhà A (Phòng Đào tạo)');
     setAdminFinalizeNote(
       'Đã đối chiếu xác nhận chữ ký của GVCN, đóng dấu số và hoàn tất xử lý. Sinh viên có thể đến nhận bản cứng hoặc tải bản số hóa.'
     );
@@ -758,7 +787,7 @@ export default function AdminDashboardPage({ user, logoSrc = DEFAULT_LOGO_SRC, o
     if (!selectedRequest) return;
     const updated = finalizeAndNotifyStudentByAdmin(selectedRequest.id, {
       pickupLocation,
-      adminName: user?.fullName || 'Cán bộ Quản lý Một cửa',
+      adminName: user?.fullName || 'Quản trị viên',
       adminNote: adminFinalizeNote,
     });
     setRequestsList(updated);
@@ -783,7 +812,7 @@ export default function AdminDashboardPage({ user, logoSrc = DEFAULT_LOGO_SRC, o
           />
           <div className="min-w-0 leading-tight">
             <p className="text-xs font-bold text-slate-800">Admin Portal</p>
-            <p className="truncate text-[11px] text-slate-500">Quản lý Một cửa</p>
+            <p className="truncate text-[11px] text-slate-500">Quản trị viên</p>
           </div>
         </div>
 
@@ -840,9 +869,9 @@ export default function AdminDashboardPage({ user, logoSrc = DEFAULT_LOGO_SRC, o
   );
 
   return (
-    <div className="flex min-h-screen bg-[#F4F7FE] text-slate-800">
+    <div className="flex min-h-screen bg-slate-900/5 text-slate-800">
       {/* Sidebar Desktop */}
-      <aside className="hidden w-64 shrink-0 border-r border-slate-200/70 bg-gradient-to-b from-[#F8FAFF] to-[#EEF4FF] lg:block">
+      <aside className="hidden w-64 shrink-0 border-r border-slate-200/80 bg-white/95 shadow-sm lg:block">
         <div className="sticky top-0 h-screen">{renderSidebarContent()}</div>
       </aside>
 
@@ -896,7 +925,7 @@ export default function AdminDashboardPage({ user, logoSrc = DEFAULT_LOGO_SRC, o
                 placeholder={
                   activeTab === 'request-types'
                     ? 'Tìm kiếm loại đơn, mã thủ tục...'
-                    : 'Tìm kiếm mã đơn, sinh viên, lớp...'
+                    : 'Tìm kiếm loại đơn, sinh viên, lớp...'
                 }
                 className="w-full rounded-xl border border-slate-200/80 bg-[#F4F7FE] py-2 pr-4 pl-10 text-sm text-slate-700 placeholder-slate-400 transition-all focus:border-[#2563EB] focus:bg-white focus:ring-4 focus:ring-blue-500/10 focus:outline-none"
               />
@@ -904,14 +933,99 @@ export default function AdminDashboardPage({ user, logoSrc = DEFAULT_LOGO_SRC, o
           </div>
 
           <div className="flex shrink-0 items-center gap-3 sm:gap-5">
-            <button
-              type="button"
-              className="relative cursor-pointer rounded-xl p-2 text-slate-600 transition-colors hover:bg-slate-100"
-              aria-label="Thông báo"
-            >
-              <Bell className="h-5 w-5" strokeWidth={1.8} />
-              <span className="absolute top-1.5 right-2 h-2 w-2 rounded-full bg-red-500 ring-2 ring-white" />
-            </button>
+            {/* Chuông thông báo hồ sơ gửi về cho Quản trị viên */}
+            <div className="relative">
+              <button
+                type="button"
+                onClick={() => setShowAdminNotifications((prev) => !prev)}
+                className="relative cursor-pointer rounded-xl p-2 text-slate-600 transition-colors hover:bg-slate-100"
+                aria-label="Thông báo"
+              >
+                <Bell className="h-5 w-5" strokeWidth={1.8} />
+                {adminUnreadCount > 0 && (
+                  <span className="absolute -top-1 -right-1 flex h-5 min-w-[20px] items-center justify-center rounded-full bg-red-500 px-1.5 text-[11px] font-bold text-white shadow-xs ring-2 ring-white leading-none">
+                    {adminUnreadCount > 99 ? '99+' : adminUnreadCount}
+                  </span>
+                )}
+              </button>
+
+              {/* Popover danh sách thông báo gửi về cho Quản trị viên */}
+              {showAdminNotifications && (
+                <div className="absolute right-0 top-full mt-2 z-50 w-80 sm:w-96 rounded-2xl border border-slate-200 bg-white p-4 shadow-2xl">
+                  <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+                    <div className="flex items-center gap-2">
+                      <Bell className="h-4 w-4 text-[#2563EB]" />
+                      <h4 className="text-sm font-bold text-slate-800">Thông báo hồ sơ gửi về</h4>
+                    </div>
+                    {adminNotifications.length > 0 && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          markAllNotificationsAsRead('admin');
+                          setAdminNotifications(getStoredNotifications('admin'));
+                        }}
+                        className="cursor-pointer text-xs font-semibold text-[#2563EB] hover:underline"
+                      >
+                        Đã đọc tất cả
+                      </button>
+                    )}
+                  </div>
+
+                  <div className="mt-3 max-h-72 space-y-2 overflow-y-auto">
+                    {adminNotifications.length === 0 ? (
+                      <p className="py-6 text-center text-xs text-slate-400">
+                        Chưa có thông báo hồ sơ nào gửi về.
+                      </p>
+                    ) : (
+                      adminNotifications.map((notif) => (
+                        <div
+                          key={notif.id}
+                          className={`rounded-xl border p-3 text-xs transition-colors ${
+                            notif.isRead
+                              ? 'border-slate-100 bg-slate-50/60 text-slate-600'
+                              : 'border-blue-200 bg-blue-50/50 text-slate-800 shadow-xs'
+                          }`}
+                        >
+                          <div className="flex items-start justify-between gap-2">
+                            <p className="font-bold text-slate-800">{notif.title}</p>
+                            {!notif.isRead && (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  markNotificationAsRead(notif.id);
+                                  setAdminNotifications(getStoredNotifications('admin'));
+                                }}
+                                className="cursor-pointer text-[10px] font-semibold text-[#2563EB] hover:underline"
+                              >
+                                Đã xem
+                              </button>
+                            )}
+                          </div>
+                          <p className="mt-1 leading-relaxed text-slate-600">{notif.message || notif.body}</p>
+                          <div className="mt-2 flex items-center justify-between text-[10px] text-slate-400">
+                            <span>{notif.time}</span>
+                            {notif.requestId && (
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  markNotificationAsRead(notif.id);
+                                  setAdminNotifications(getStoredNotifications('admin'));
+                                  setShowAdminNotifications(false);
+                                  setActiveTab('pending-dispatch');
+                                }}
+                                className="cursor-pointer font-semibold text-[#2563EB] hover:underline"
+                              >
+                                Mở xử lý &rarr;
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
 
             <div className="flex items-center gap-2.5">
               <div className="flex h-9 w-9 items-center justify-center rounded-full bg-[#2563EB] text-xs font-bold text-white shadow-xs">
@@ -947,7 +1061,7 @@ export default function AdminDashboardPage({ user, logoSrc = DEFAULT_LOGO_SRC, o
                     Xin chào, {adminName}!
                   </h1>
                   <p className="mt-1.5 text-sm text-slate-500 sm:text-base">
-                    Trung tâm tiếp nhận & phân phối hồ sơ sinh viên Một Cửa. Chúc bạn làm việc hiệu quả!
+                    Trung tâm tiếp nhận & phân phối hồ sơ sinh viên Quản trị viên. Chúc bạn làm việc hiệu quả!
                   </p>
                 </div>
                 <div className="hidden md:block">
@@ -1009,7 +1123,7 @@ export default function AdminDashboardPage({ user, logoSrc = DEFAULT_LOGO_SRC, o
                 </button>
               </section>
 
-              {/* Cảnh báo khi có đơn GV đã duyệt xong chờ Một cửa đóng dấu & trả kết quả */}
+              {/* Cảnh báo khi có đơn GV đã duyệt xong chờ Quản trị viên đóng dấu & trả kết quả */}
               {stats.teacherApprovedCount > 0 && (
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 rounded-2xl border border-indigo-200 bg-indigo-50/90 p-4 sm:p-5 shadow-xs">
                   <div className="flex items-center gap-3">
@@ -1021,7 +1135,7 @@ export default function AdminDashboardPage({ user, logoSrc = DEFAULT_LOGO_SRC, o
                         Có {stats.teacherApprovedCount} đơn Giảng viên đã duyệt & ký số thành công!
                       </h4>
                       <p className="text-xs text-indigo-700">
-                        Hồ sơ đang chờ Bộ phận Một Cửa kiểm tra, đóng dấu và gửi thông báo hoàn tất đến sinh viên qua web.
+                        Hồ sơ đang chờ Quản trị viên kiểm tra, đóng dấu và gửi thông báo hoàn tất đến sinh viên qua web.
                       </p>
                     </div>
                   </div>
@@ -1133,8 +1247,7 @@ export default function AdminDashboardPage({ user, logoSrc = DEFAULT_LOGO_SRC, o
                   <table className="w-full min-w-[760px] text-left text-sm">
                     <thead>
                       <tr className="border-b border-slate-100 text-xs font-semibold text-slate-500">
-                        <th className="py-3 pr-4 pl-2">Mã đơn</th>
-                        <th className="px-4 py-3">Loại đơn</th>
+                        <th className="py-3 pr-4 pl-2 font-semibold text-slate-700">Loại đơn</th>
                         <th className="px-4 py-3">Sinh viên</th>
                         <th className="px-4 py-3">Ngày tạo</th>
                         <th className="px-4 py-3">Phân phối tới</th>
@@ -1145,15 +1258,14 @@ export default function AdminDashboardPage({ user, logoSrc = DEFAULT_LOGO_SRC, o
                     <tbody className="divide-y divide-slate-100">
                       {filteredRequests.length === 0 ? (
                         <tr>
-                          <td colSpan={7} className="py-8 text-center text-sm text-slate-500">
+                          <td colSpan={6} className="py-8 text-center text-sm text-slate-500">
                             Không tìm thấy hồ sơ nào khớp với bộ lọc hiện tại.
                           </td>
                         </tr>
                       ) : (
                         filteredRequests.map((req) => (
                           <tr key={req.id} className="transition-colors hover:bg-slate-50/70">
-                            <td className="py-3.5 pr-4 pl-2 font-semibold text-slate-700 whitespace-nowrap">{req.id}</td>
-                            <td className="px-4 py-3.5 text-slate-700 whitespace-nowrap">{req.typeName}</td>
+                            <td className="py-3.5 pr-4 pl-2 font-semibold text-slate-800 whitespace-nowrap">{req.typeName}</td>
                             <td className="px-4 py-3.5 whitespace-nowrap">
                               <p className="font-medium text-slate-800">{req.studentName} <span className="text-slate-400 font-normal">({req.studentCode})</span></p>
                               <p className="text-xs text-slate-400">{req.className}</p>
@@ -1239,18 +1351,18 @@ export default function AdminDashboardPage({ user, logoSrc = DEFAULT_LOGO_SRC, o
           {/* TAB 2: ĐƠN CẦN XỬ LÝ */}
           {activeTab === 'pending-dispatch' && (
             <div className="space-y-6">
-              {/* PHẦN 1: ĐƠN GV ĐÃ DUYỆT - CHỜ MỘT CỬA ĐÓNG DẤU & THÔNG BÁO SV */}
+              {/* PHẦN 1: ĐƠN GV ĐÃ DUYỆT - CHỜ QUẢN TRỊ VIÊN ĐÓNG DẤU & THÔNG BÁO SV */}
               <section className="rounded-2xl border border-indigo-200 bg-white p-5 shadow-xs sm:p-6 ring-2 ring-indigo-100">
                 <div className="mb-5 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                   <div>
                     <div className="flex items-center gap-2">
                       <Sparkles className="h-5 w-5 text-indigo-600" />
                       <h1 className="text-xl font-bold text-slate-800">
-                        Đơn GV đã duyệt — Chờ Một Cửa đóng dấu & Trả kết quả ({stats.teacherApprovedCount})
+                        Đơn GV đã duyệt — Chờ Quản trị viên đóng dấu & Trả kết quả ({stats.teacherApprovedCount})
                       </h1>
                     </div>
                     <p className="text-sm text-slate-500 mt-1">
-                      Giáo viên chủ nhiệm đã ký số điện tử. Cán bộ Một Cửa đối chiếu, đóng dấu và gửi thông báo hoàn thành đến sinh viên qua web.
+                      Giáo viên chủ nhiệm đã ký số điện tử. Cán bộ Quản trị viên đối chiếu, đóng dấu và gửi thông báo hoàn thành đến sinh viên qua web.
                     </p>
                   </div>
                 </div>
@@ -1259,8 +1371,7 @@ export default function AdminDashboardPage({ user, logoSrc = DEFAULT_LOGO_SRC, o
                   <table className="w-full min-w-[700px] text-left text-sm">
                     <thead>
                       <tr className="border-b border-indigo-100 text-xs font-semibold text-slate-500 bg-indigo-50/50">
-                        <th className="py-3 pr-4 pl-3">Mã đơn</th>
-                        <th className="px-4 py-3">Loại đơn</th>
+                        <th className="py-3 pr-4 pl-3 font-semibold text-slate-700">Loại đơn</th>
                         <th className="px-4 py-3">Sinh viên</th>
                         <th className="px-4 py-3">GV ký duyệt</th>
                         <th className="px-4 py-3">Trạng thái</th>
@@ -1270,8 +1381,8 @@ export default function AdminDashboardPage({ user, logoSrc = DEFAULT_LOGO_SRC, o
                     <tbody className="divide-y divide-slate-100">
                       {requestsList.filter((r) => r.status === 'teacher_approved').length === 0 ? (
                         <tr>
-                          <td colSpan={6} className="py-6 text-center text-xs text-slate-400">
-                            Hiện không có đơn nào đang chờ Một Cửa đóng dấu.
+                          <td colSpan={5} className="py-6 text-center text-xs text-slate-400">
+                            Hiện không có đơn nào đang chờ Quản trị viên đóng dấu.
                           </td>
                         </tr>
                       ) : (
@@ -1279,8 +1390,7 @@ export default function AdminDashboardPage({ user, logoSrc = DEFAULT_LOGO_SRC, o
                           .filter((r) => r.status === 'teacher_approved')
                           .map((req) => (
                             <tr key={req.id} className="transition-colors hover:bg-indigo-50/40">
-                              <td className="py-3.5 pr-4 pl-3 font-semibold text-indigo-900 whitespace-nowrap">{req.id}</td>
-                              <td className="px-4 py-3.5 text-slate-700 whitespace-nowrap">{req.typeName}</td>
+                              <td className="py-3.5 pr-4 pl-3 font-semibold text-slate-800 whitespace-nowrap">{req.typeName}</td>
                               <td className="px-4 py-3.5 whitespace-nowrap">
                                 <p className="font-medium text-slate-800">{req.studentName} <span className="text-slate-400 font-normal">({req.studentCode})</span></p>
                                 <p className="text-xs text-slate-400">{req.className}</p>
@@ -1344,8 +1454,7 @@ export default function AdminDashboardPage({ user, logoSrc = DEFAULT_LOGO_SRC, o
                   <table className="w-full min-w-[700px] text-left text-sm">
                     <thead>
                       <tr className="border-b border-slate-100 text-xs font-semibold text-slate-500">
-                        <th className="py-3 pr-4 pl-2">Mã đơn</th>
-                        <th className="px-4 py-3">Loại đơn</th>
+                        <th className="py-3 pr-4 pl-2 font-semibold text-slate-700">Loại đơn</th>
                         <th className="px-4 py-3">Sinh viên</th>
                         <th className="px-4 py-3">Ngày tạo</th>
                         <th className="px-4 py-3">Trạng thái</th>
@@ -1355,7 +1464,7 @@ export default function AdminDashboardPage({ user, logoSrc = DEFAULT_LOGO_SRC, o
                     <tbody className="divide-y divide-slate-100">
                       {requestsList.filter((r) => r.status === 'pending').length === 0 ? (
                         <tr>
-                          <td colSpan={6} className="py-6 text-center text-xs text-slate-400">
+                          <td colSpan={5} className="py-6 text-center text-xs text-slate-400">
                             Không có đơn nào đang chờ phân luồng.
                           </td>
                         </tr>
@@ -1364,8 +1473,7 @@ export default function AdminDashboardPage({ user, logoSrc = DEFAULT_LOGO_SRC, o
                           .filter((r) => r.status === 'pending')
                           .map((req) => (
                             <tr key={req.id} className="transition-colors hover:bg-slate-50/70">
-                              <td className="py-3.5 pr-4 pl-2 font-semibold text-slate-700 whitespace-nowrap">{req.id}</td>
-                              <td className="px-4 py-3.5 text-slate-700 whitespace-nowrap">{req.typeName}</td>
+                              <td className="py-3.5 pr-4 pl-2 font-semibold text-slate-800 whitespace-nowrap">{req.typeName}</td>
                               <td className="px-4 py-3.5 whitespace-nowrap">
                                 <p className="font-medium text-slate-800">{req.studentName} <span className="text-slate-400 font-normal">({req.studentCode})</span></p>
                                 <p className="text-xs text-slate-400">{req.className}</p>
@@ -1569,8 +1677,7 @@ export default function AdminDashboardPage({ user, logoSrc = DEFAULT_LOGO_SRC, o
                 <table className="w-full min-w-[700px] text-left text-sm">
                   <thead>
                     <tr className="border-b border-slate-100 text-xs font-semibold text-slate-500">
-                      <th className="py-3 pr-4 pl-2">Mã đơn</th>
-                      <th className="px-4 py-3">Loại đơn</th>
+                      <th className="py-3 pr-4 pl-2 font-semibold text-slate-700">Loại đơn</th>
                       <th className="px-4 py-3">Sinh viên</th>
                       <th className="px-4 py-3">Người/Phòng thụ lý</th>
                       <th className="px-4 py-3">Trạng thái</th>
@@ -1580,8 +1687,7 @@ export default function AdminDashboardPage({ user, logoSrc = DEFAULT_LOGO_SRC, o
                   <tbody className="divide-y divide-slate-100">
                     {requestsList.map((req) => (
                       <tr key={req.id} className="transition-colors hover:bg-slate-50/70">
-                        <td className="py-3.5 pr-4 pl-2 font-semibold text-slate-700 whitespace-nowrap">{req.id}</td>
-                        <td className="px-4 py-3.5 text-slate-700 whitespace-nowrap">{req.typeName}</td>
+                        <td className="py-3.5 pr-4 pl-2 font-semibold text-slate-800 whitespace-nowrap">{req.typeName}</td>
                         <td className="px-4 py-3.5 whitespace-nowrap">{req.studentName} ({req.studentCode})</td>
                         <td className="px-4 py-3.5 whitespace-nowrap text-xs text-slate-600">
                           {req.assignedTo ? req.assignedTo.name : 'Chưa phân phát'}
@@ -1635,7 +1741,7 @@ export default function AdminDashboardPage({ user, logoSrc = DEFAULT_LOGO_SRC, o
                 </div>
                 <div>
                   <span className="text-slate-500">Bộ phận:</span>{' '}
-                  <span className="font-semibold text-slate-800">Ban Tiếp nhận Một cửa & Quản lý Đào tạo</span>
+                  <span className="font-semibold text-slate-800">Quản trị viên & Quản lý Đào tạo</span>
                 </div>
               </div>
             </div>
@@ -2261,13 +2367,13 @@ export default function AdminDashboardPage({ user, logoSrc = DEFAULT_LOGO_SRC, o
                         {selectedRequest.teacherApprovedBy || selectedRequest.assignedTo?.name || 'Giảng viên chủ nhiệm'}
                       </p>
                       <p className="text-slate-500">Đã kiểm duyệt thông tin & đồng ý đề xuất của sinh viên.</p>
-                      <p className="font-semibold text-indigo-700">Chờ Một cửa đối chiếu, đóng dấu và thông báo sinh viên.</p>
+                      <p className="font-semibold text-indigo-700">Chờ Quản trị viên đối chiếu, đóng dấu và thông báo sinh viên.</p>
                     </div>
                   </div>
                 </div>
               )}
 
-              {/* Thông tin đóng dấu Một cửa nếu đã hoàn thành */}
+              {/* Thông tin đóng dấu Quản trị viên nếu đã hoàn thành */}
               {selectedRequest.status === 'completed' && (
                 <div className="rounded-xl border border-emerald-200 bg-emerald-50/70 p-4 space-y-1.5 text-xs text-emerald-900">
                   <p className="font-bold text-sm flex items-center gap-1.5 text-emerald-800">
@@ -2406,7 +2512,7 @@ export default function AdminDashboardPage({ user, logoSrc = DEFAULT_LOGO_SRC, o
                   required
                   value={pickupLocation}
                   onChange={(e) => setPickupLocation(e.target.value)}
-                  placeholder="Ví dụ: Phòng 102 - Tòa nhà A (Bộ phận Một Cửa)"
+                  placeholder="Ví dụ: Phòng 102 - Tòa nhà A (Phòng Đào tạo)"
                   className="w-full rounded-xl border border-slate-300 p-2.5 text-xs text-slate-800 focus:border-[#2563EB] focus:outline-none"
                 />
               </div>

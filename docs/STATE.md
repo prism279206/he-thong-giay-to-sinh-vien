@@ -36,6 +36,11 @@ Vùng sở hữu: `src/pages/`, `src/components/`
 - Kiểm tra toàn diện 6 bảng cốt lõi trên Supabase (tất cả đều đã tồn tại và sẵn sàng hoạt động). Tạo file migration `supabase/migrations/20261120_seed_accounts_and_workflows.sql` cung cấp mã lệnh SQL tạo tài khoản & mật khẩu cho Quản trị viên (`QL001`) và Giảng viên (`GV001`, `GV002`) vào `auth.users` và `public.profiles`, đồng thời nạp seed data 8 loại đơn và quy trình 4 chặng. Chuẩn hóa `src/services/authService.js` map mã cán bộ sang email trước khi gọi Supabase Auth.
 - Cập nhật định danh tài khoản Quản trị viên thành mã `admincdvmhn` (email: `admin@caodangvietmyhanoi.edu.vn`) và Giáo viên chủ nhiệm thành mã `gvcn` (email: `gvcn@caodangvietmyhanoi.edu.vn`), đồng bộ trên `authService.js`, các trang giao diện Dashboard và file migration Supabase.
 - Sửa lỗi thiếu import gây sập màn hình trắng (blank screen) khi sinh viên tạo đơn mới hoặc xem đơn đã tạo: bổ sung import `useEffect` trong `StudentConfirmationForm.jsx` và import icon `Eye` trong `StudentDashboardPage.jsx`.
+- Tích hợp hình nền động campus breeze toàn hệ thống (`CampusBackdrop.jsx`) và tính năng ghi nhớ đăng nhập trình duyệt (`vmh_saved_session`).
+- Chuẩn hóa vai trò: Thay thế toàn bộ thuật ngữ "Một cửa" thành "Quản trị viên" / "Ban Quản trị" trên toàn bộ giao diện và services.
+- Dọn dẹp dữ liệu khởi tạo trống sạch sẽ (`INITIAL_SHARED_REQUESTS = []`, `INITIAL_NOTIFICATIONS = []`) và nâng cấp storage key để reset dữ liệu mẫu cũ.
+- Nâng cấp hệ thống thông báo thời gian thực (`real-time event`), thay thế chấm đỏ tĩnh bằng huy hiệu hiển thị số lượng tin nhắn/hồ sơ thực tế kèm popover thông báo chi tiết cho cả 3 vai trò (Sinh viên, Giảng viên, Quản trị viên).
+- Tinh gọn bảng danh sách hồ sơ: gỡ bỏ cột "Mã đơn" (#2026-xxxx) trên các bảng của Sinh viên, Giảng viên và Quản trị viên, đưa "Loại đơn" lên vị trí nổi bật đầu bảng.
 
 ## Đang làm
 - Chạy Seed data mẫu đơn Xác nhận HSSV trên Supabase; chuẩn bị gắn tiếp form cho các loại đơn khác (bảng điểm, miễn giảm học phí, phúc khảo...) và chuyển sang dùng React Router khi hoàn thiện hợp đồng services.
