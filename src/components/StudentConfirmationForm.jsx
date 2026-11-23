@@ -326,9 +326,11 @@ function StudentConfirmationForm({ onBack, user, requestType }) {
     const newRequestPayload = {
       id: newRequestId,
       typeId: requestType?.id || 'rt-confirm-student',
+      typeCode: requestType?.code || 'XAC_NHAN_SV',
       typeName: requestType?.name || 'Đơn xin cấp xác nhận học sinh – sinh viên',
       typeCategory: requestType?.category || 'Xác nhận học tập',
       departmentName: requestType?.departmentName || 'Phòng Đào tạo & Quản lý Khoa học',
+      studentId: user?.id || null,
       studentName: formData.fullName.trim(),
       studentCode: formData.studentCode.trim(),
       phone: formData.phone.trim(),

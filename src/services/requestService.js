@@ -18,25 +18,68 @@ import {
  * @param {object} payload Thông tin lá đơn và chữ ký sinh viên
  */
 export async function submitRequest(payload) {
+  let supabaseResult = null;
   try {
-    // 1. Thử lưu vào Supabase
+    // 1. Kiểm tra phiên đăng nhập Supabase Auth hiện tại
+    const { data: authData } = await supabase.auth.getUser();
+    const studentAuthId =
+      authData?.user?.id ||
+      (payload.studentId && /^[0-9a-f-]{36}$/i.test(payload.studentId) ? payload.studentId : null);
+
+    // 2. Tra cứu UUID của loại đơn trong bảng request_types trên Supabase
+    let requestTypeId =
+      payload.typeId && /^[0-9a-f-]{36}$/i.test(payload.typeId) ? payload.typeId : null;
+    if (!requestTypeId) {
+      const { data: rt } = await supabase
+        .from('request_types')
+        .select('id')
+        .or(`ma_loai_don.eq.${payload.typeCode || 'XAC_NHAN_SV'},ten_loai_don.eq.${payload.typeName}`)
+        .limit(1)
+        .maybeSingle();
+      if (rt?.id) {
+        requestTypeId = rt.id;
+      }
+    }
+
+    // 3. Tra cứu bước đầu tiên của quy trình (workflow_step)
+    let currentStepId = null;
+    if (requestTypeId) {
+      const { data: wf } = await supabase
+        .from('workflows')
+        .select('id, workflow_steps(id, thu_tu_buoc)')
+        .eq('request_type_id', requestTypeId)
+        .order('phien_ban', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (wf?.workflow_steps && wf.workflow_steps.length > 0) {
+        const sorted = [...wf.workflow_steps].sort((a, b) => a.thu_tu_buoc - b.thu_tu_buoc);
+        currentStepId = sorted[0].id;
+      }
+    }
+
+    // 4. Thử lưu vào Supabase
     const { data, error } = await supabase
       .from('requests')
       .insert([
         {
           id: payload.id,
-          student_id: payload.studentId || null,
-          request_type_id: payload.typeId || 'a0000000-0000-0000-0000-000000000001',
-          current_step_id: 'c0000000-0000-0000-0000-000000000001',
+          student_id: studentAuthId,
+          request_type_id: requestTypeId,
+          current_step_id: currentStepId,
           trang_thai: 'pending',
           du_lieu_don: payload,
           chu_ky_sinh_vien: payload.studentSignature || '',
         },
       ])
       .select()
-      .single();
+      .maybeSingle();
 
-    if (!error && data) {
+    if (error) {
+      console.warn('Lưu Supabase không thành công (RLS hoặc chưa nạp seed data):', error.message || error);
+    } else if (data) {
+      supabaseResult = data;
+      console.log('Đã lưu thành công hồ sơ vào Supabase database:', data.id);
       // Ghi log bước nộp đơn
       await supabase.from('request_step_logs').insert([
         {
@@ -47,12 +90,12 @@ export async function submitRequest(payload) {
       ]);
     }
   } catch (err) {
-    console.warn('Lưu Supabase chưa khả dụng, tự động lưu vào store dự phòng:', err.message);
+    console.warn('Lỗi kết nối Supabase, tự động chuyển chế độ dự phòng:', err.message);
   }
 
   // Đồng thời lưu vào mock store để đảm bảo hiển thị ngay trên giao diện
   addMockRequest(payload);
-  return { data: payload, error: null };
+  return { data: supabaseResult || payload, error: null };
 }
 
 /**
@@ -209,5 +252,55 @@ export async function rejectRequest(requestId, reason, actorName) {
 
   rejectMockRequest(requestId, reason, actorName);
   return { success: true };
+}
+
+/**
+ * Thêm loại đơn mới lên Supabase (Admin)
+ */
+export async function createRequestTypeOnSupabase(typeItem) {
+  try {
+    const { data, error } = await supabase
+      .from('request_types')
+      .insert([
+        {
+          ma_loai_don: typeItem.code,
+          ten_loai_don: typeItem.name,
+          danh_muc: typeItem.category,
+          mo_ta: typeItem.description,
+          thoi_han_ngay: typeItem.slaDays,
+          dang_hoat_dong: true,
+        },
+      ])
+      .select()
+      .maybeSingle();
+
+    if (error) {
+      console.warn('Lỗi khi thêm request_type vào Supabase:', error.message);
+    }
+    return { data, error };
+  } catch (err) {
+    console.warn('Lỗi kết nối Supabase khi thêm loại đơn:', err.message);
+    return { data: null, error: err };
+  }
+}
+
+/**
+ * Xóa loại đơn trên Supabase (Admin)
+ */
+export async function deleteRequestTypeOnSupabase(typeCode) {
+  try {
+    const { error } = await supabase
+      .from('request_types')
+      .delete()
+      .eq('ma_loai_don', typeCode);
+
+    if (error) {
+      console.warn('Lỗi khi xóa request_type trên Supabase:', error.message);
+    }
+    return { error };
+  } catch (err) {
+    console.warn('Lỗi kết nối Supabase khi xóa loại đơn:', err.message);
+    return { error: err };
+  }
 }
 

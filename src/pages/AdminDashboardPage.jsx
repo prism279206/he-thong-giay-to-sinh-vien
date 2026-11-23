@@ -37,6 +37,10 @@ import { DEFAULT_LOGO_SRC } from './LoginPage';
 import OfficialDocumentView from '../components/OfficialDocumentView';
 import { parseDocxFile } from '../utils/docxParser';
 import {
+  createRequestTypeOnSupabase,
+  deleteRequestTypeOnSupabase,
+} from '../services/requestService';
+import {
   getStoredRequests,
   saveStoredRequests,
   getStoredRequestTypes,
@@ -677,6 +681,7 @@ export default function AdminDashboardPage({ user, logoSrc = DEFAULT_LOGO_SRC, o
     const updatedTypes = [newTypeItem, ...requestTypes];
     setRequestTypes(updatedTypes);
     saveStoredRequestTypes(updatedTypes);
+    createRequestTypeOnSupabase(newTypeItem);
 
     // Chuyển bộ lọc danh mục về 'all' và xóa từ khóa tìm kiếm để loại đơn mới xuất hiện ngay đầu danh sách
     setSelectedTypeCategory('all');
@@ -712,6 +717,7 @@ export default function AdminDashboardPage({ user, logoSrc = DEFAULT_LOGO_SRC, o
     const updated = requestTypes.filter((t) => t.id !== typeToDelete.id);
     setRequestTypes(updated);
     saveStoredRequestTypes(updated);
+    deleteRequestTypeOnSupabase(typeToDelete.code);
 
     if (viewingTemplate?.id === typeToDelete.id) {
       setViewingTemplate(null);
