@@ -30,6 +30,8 @@ import {
   FileUp,
   Sparkles,
   Eye,
+  Trash2,
+  AlertTriangle,
 } from 'lucide-react';
 import { DEFAULT_LOGO_SRC } from './LoginPage';
 import OfficialDocumentView from '../components/OfficialDocumentView';
@@ -372,6 +374,9 @@ export default function AdminDashboardPage({ user, logoSrc = DEFAULT_LOGO_SRC, o
   // Xem chi tiết mẫu đơn đã có
   const [viewingTemplate, setViewingTemplate] = useState(null);
 
+  // Modal xác nhận xóa vĩnh viễn loại đơn
+  const [typeToDelete, setTypeToDelete] = useState(null);
+
   // Refs cho camera và file upload
   const fileInputRef = useRef(null);
   const cameraInputRef = useRef(null);
@@ -699,6 +704,23 @@ export default function AdminDashboardPage({ user, logoSrc = DEFAULT_LOGO_SRC, o
     );
     setRequestTypes(updated);
     saveStoredRequestTypes(updated);
+  };
+
+  // Xác nhận xóa vĩnh viễn loại đơn
+  const handleConfirmDeleteType = () => {
+    if (!typeToDelete) return;
+    const updated = requestTypes.filter((t) => t.id !== typeToDelete.id);
+    setRequestTypes(updated);
+    saveStoredRequestTypes(updated);
+
+    if (viewingTemplate?.id === typeToDelete.id) {
+      setViewingTemplate(null);
+    }
+
+    const deletedName = typeToDelete.name;
+    setTypeToDelete(null);
+    setActionSuccessMsg(`Đã xóa vĩnh viễn loại đơn: "${deletedName}".`);
+    setTimeout(() => setActionSuccessMsg(''), 4500);
   };
 
   // Mở modal phân phát đơn
@@ -1730,14 +1752,25 @@ export default function AdminDashboardPage({ user, logoSrc = DEFAULT_LOGO_SRC, o
                           </div>
                         </div>
 
-                        <button
-                          type="button"
-                          onClick={() => setViewingTemplate(type)}
-                          className="flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-xs font-semibold text-[#2563EB] hover:bg-blue-50 transition-colors shrink-0"
-                        >
-                          <Eye className="h-3.5 w-3.5" />
-                          <span>Xem mẫu</span>
-                        </button>
+                        <div className="flex items-center gap-1.5 shrink-0">
+                          <button
+                            type="button"
+                            onClick={() => setViewingTemplate(type)}
+                            className="flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-xs font-semibold text-[#2563EB] hover:bg-blue-50 transition-colors"
+                          >
+                            <Eye className="h-3.5 w-3.5" />
+                            <span>Xem mẫu</span>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setTypeToDelete(type)}
+                            className="flex items-center gap-1 rounded-lg border border-red-200 bg-white px-2.5 py-1 text-xs font-semibold text-red-600 hover:bg-red-50 hover:border-red-300 transition-colors"
+                            title="Xóa loại đơn không sử dụng đến"
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                            <span>Xóa</span>
+                          </button>
+                        </div>
                       </div>
                     </div>
                   </div>
@@ -2320,7 +2353,15 @@ export default function AdminDashboardPage({ user, logoSrc = DEFAULT_LOGO_SRC, o
               </div>
             </div>
 
-            <div className="flex items-center justify-end border-t border-slate-100 px-6 py-3 bg-white">
+            <div className="flex items-center justify-between border-t border-slate-100 px-6 py-3 bg-white">
+              <button
+                type="button"
+                onClick={() => setTypeToDelete(viewingTemplate)}
+                className="flex items-center gap-1.5 rounded-xl border border-red-200 bg-white px-3.5 py-2 text-xs font-semibold text-red-600 hover:bg-red-50 hover:border-red-300 transition-colors"
+              >
+                <Trash2 className="h-3.5 w-3.5" />
+                <span>Xóa loại đơn này</span>
+              </button>
               <button
                 type="button"
                 onClick={() => setViewingTemplate(null)}
@@ -2844,6 +2885,57 @@ export default function AdminDashboardPage({ user, logoSrc = DEFAULT_LOGO_SRC, o
                 className="rounded-xl bg-[#2563EB] px-5 py-2 text-xs font-semibold text-white hover:bg-blue-700"
               >
                 Đóng văn bản
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL XÁC NHẬN XÓA LOẠI ĐƠN */}
+      {typeToDelete && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 p-4 backdrop-blur-xs">
+          <div className="w-full max-w-md rounded-2xl bg-white shadow-2xl overflow-hidden p-6">
+            <div className="flex items-center gap-3 mb-4">
+              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-red-100 text-red-600">
+                <Trash2 className="h-5 w-5" />
+              </div>
+              <div>
+                <h3 className="text-base font-bold text-slate-800">Xác nhận xóa loại đơn</h3>
+                <p className="text-xs text-slate-500">Hành động này sẽ gỡ bỏ thủ tục khỏi hệ thống</p>
+              </div>
+            </div>
+
+            <div className="rounded-xl border border-slate-100 bg-slate-50/80 p-3.5 text-xs text-slate-700 space-y-1.5 mb-4">
+              <p>
+                <strong>Tên loại đơn:</strong> <span className="text-slate-900 font-semibold">{typeToDelete.name}</span>
+              </p>
+              <p>
+                <strong>Mã thủ tục:</strong> <span className="font-mono text-blue-600 font-semibold">{typeToDelete.code}</span> • <strong>Đơn vị:</strong> {typeToDelete.departmentName}
+              </p>
+            </div>
+
+            <div className="flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50/70 p-3 text-xs text-amber-900 mb-6">
+              <AlertTriangle className="h-4 w-4 text-amber-600 shrink-0 mt-0.5" />
+              <p className="leading-relaxed">
+                Sau khi xóa, sinh viên sẽ không thể nhìn thấy hoặc nộp mới loại đơn này nữa. Các hồ sơ cũ đã được nộp từ trước vẫn sẽ được bảo lưu an toàn trong lịch sử hồ sơ.
+              </p>
+            </div>
+
+            <div className="flex items-center justify-end gap-2.5">
+              <button
+                type="button"
+                onClick={() => setTypeToDelete(null)}
+                className="rounded-xl border border-slate-200 px-4 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-50 transition-colors"
+              >
+                Hủy bỏ
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmDeleteType}
+                className="flex items-center gap-1.5 rounded-xl bg-red-600 px-4 py-2 text-xs font-semibold text-white hover:bg-red-700 shadow-sm transition-colors"
+              >
+                <Trash2 className="h-3.5 w-3.5" />
+                <span>Xác nhận xóa vĩnh viễn</span>
               </button>
             </div>
           </div>

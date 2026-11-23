@@ -572,7 +572,7 @@ export function getStoredRequestTypes() {
       return INITIAL_REQUEST_TYPES;
     }
     const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) && parsed.length > 0 ? parsed : INITIAL_REQUEST_TYPES;
+    return Array.isArray(parsed) ? parsed : INITIAL_REQUEST_TYPES;
   } catch {
     return INITIAL_REQUEST_TYPES;
   }
@@ -584,6 +584,9 @@ export function getStoredRequestTypes() {
 export function saveStoredRequestTypes(types) {
   try {
     localStorage.setItem(REQUEST_TYPES_STORAGE_KEY, JSON.stringify(types));
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new Event('vmh_request_types_updated'));
+    }
   } catch (err) {
     console.error('Lỗi khi lưu danh sách loại đơn vào localStorage:', err);
   }

@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import {
   ArrowLeft,
   ArrowRight,
@@ -39,12 +39,21 @@ function renderCategoryIcon(category, code, className = 'h-5 w-5') {
 function RequestTypePicker({ onBack, user }) {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedType, setSelectedType] = useState(null);
+  const [typesList, setTypesList] = useState(() => getStoredRequestTypes());
+
+  // Lắng nghe sự kiện cập nhật danh mục loại đơn từ Quản trị viên
+  useEffect(() => {
+    const handleUpdate = () => {
+      setTypesList(getStoredRequestTypes());
+    };
+    window.addEventListener('vmh_request_types_updated', handleUpdate);
+    return () => window.removeEventListener('vmh_request_types_updated', handleUpdate);
+  }, []);
 
   // Lấy danh mục các loại đơn từ kho lưu trữ (chỉ lấy các loại đang mở isActive !== false)
   const availableTypes = useMemo(() => {
-    const list = getStoredRequestTypes();
-    return list.filter((item) => item.isActive !== false);
-  }, []);
+    return typesList.filter((item) => item.isActive !== false);
+  }, [typesList]);
 
   const normalizedSearch = searchTerm.trim().toLowerCase();
   const filteredTypes = availableTypes.filter(
