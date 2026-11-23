@@ -64,7 +64,7 @@ const ACTIVE_COHORTS = getActiveCohorts();
 const COHORT_OPTIONS = ['Tất cả', ...ACTIVE_COHORTS];
 const FACULTY_OPTIONS = [
   'Tất cả',
-  'Khoa Công nghệ nghệ thiết kế',
+  'Khoa Công nghệ thông tin',
   'Khoa Kinh tế - Quản trị',
   'Khoa Ngoại ngữ',
   'Khoa Thiết kế mỹ thuật',

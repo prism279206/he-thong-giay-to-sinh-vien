@@ -221,6 +221,23 @@ function OfficialDocumentView({ request }) {
           <span> tại Trường Cao đẳng Việt Mỹ Hà Nội</span>
         </div>
 
+        {/* Các thông tin chi tiết số hóa từ mẫu đơn */}
+        {request.customFieldsData && request.customFieldsData.length > 0 && (
+          <div className="pt-2 space-y-1 text-[14px]">
+            <p className="font-bold underline">Nội dung chi tiết theo mẫu đơn:</p>
+            <div className="space-y-1 pl-3">
+              {request.customFieldsData.map((f, i) => (
+                <div key={f.id || i} className="flex flex-wrap items-baseline gap-x-2">
+                  <span>- {f.label}:</span>
+                  <span className="font-bold text-slate-900">
+                    {f.value || '—'}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
         {/* Lý do đề nghị cấp giấy */}
         <div className="pt-2">
           <p>

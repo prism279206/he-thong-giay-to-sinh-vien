@@ -33,6 +33,7 @@ import {
 } from 'lucide-react';
 import { DEFAULT_LOGO_SRC } from './LoginPage';
 import OfficialDocumentView from '../components/OfficialDocumentView';
+import { parseDocxFile } from '../utils/docxParser';
 import {
   getStoredRequests,
   saveStoredRequests,
@@ -362,8 +363,11 @@ export default function AdminDashboardPage({ user, logoSrc = DEFAULT_LOGO_SRC, o
   const [newTypeDepartment, setNewTypeDepartment] = useState('Phòng Đào tạo & Quản lý Khoa học');
   const [newTypeSla, setNewTypeSla] = useState('3');
   const [newTypeDescription, setNewTypeDescription] = useState('');
-  const [uploadedFile, setUploadedFile] = useState(null); // { name, size, type, previewUrl, isImage }
+  const [uploadedFile, setUploadedFile] = useState(null); // { name, size, type, previewUrl, isImage, isDocx }
   const [isCameraActive, setIsCameraActive] = useState(false);
+  const [parsedFields, setParsedFields] = useState([]); // [{ id, label, type, required, placeholder }]
+  const [isParsingDocx, setIsParsingDocx] = useState(false);
+  const [docxParseSummary, setDocxParseSummary] = useState('');
 
   // Xem chi tiết mẫu đơn đã có
   const [viewingTemplate, setViewingTemplate] = useState(null);
@@ -373,6 +377,28 @@ export default function AdminDashboardPage({ user, logoSrc = DEFAULT_LOGO_SRC, o
   const cameraInputRef = useRef(null);
   const videoRef = useRef(null);
   const streamRef = useRef(null);
+
+  // Thao tác với các trường nhập liệu tùy biến
+  const handleAddCustomField = () => {
+    const newField = {
+      id: `field_${Date.now()}`,
+      label: `Mục thông tin ${parsedFields.length + 1}`,
+      type: 'text',
+      required: true,
+      placeholder: 'Nhập nội dung...',
+    };
+    setParsedFields((prev) => [...prev, newField]);
+  };
+
+  const handleUpdateCustomField = (id, key, val) => {
+    setParsedFields((prev) =>
+      prev.map((f) => (f.id === id ? { ...f, [key]: val } : f))
+    );
+  };
+
+  const handleRemoveCustomField = (id) => {
+    setParsedFields((prev) => prev.filter((f) => f.id !== id));
+  };
 
   // Modal xem chi tiết và Phân phát
   const [selectedRequest, setSelectedRequest] = useState(null);
@@ -499,26 +525,77 @@ export default function AdminDashboardPage({ user, logoSrc = DEFAULT_LOGO_SRC, o
     }
   };
 
-  // Xử lý khi chọn file tải lên (ảnh hoặc PDF)
-  const handleFileSelected = (file) => {
+  // Xử lý khi chọn file tải lên (Word .docx, Ảnh hoặc PDF)
+  const handleFileSelected = async (file) => {
     if (!file) return;
-    const isImg = file.type.startsWith('image/');
-    const reader = new FileReader();
-    reader.onload = (e) => {
+    const isDocx = file.name.endsWith('.docx') || file.type?.includes('wordprocessingml');
+    const isImg = file.type?.startsWith('image/');
+    const isPdf = file.type === 'application/pdf' || file.name.endsWith('.pdf');
+
+    if (isImg) {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        setUploadedFile({
+          name: file.name,
+          size: `${Math.round(file.size / 1024)} KB`,
+          type: file.type,
+          previewUrl: e.target.result,
+          isImage: true,
+          isDocx: false,
+          isPdf: false,
+        });
+      };
+      reader.readAsDataURL(file);
+    } else {
       setUploadedFile({
         name: file.name,
         size: `${Math.round(file.size / 1024)} KB`,
-        type: file.type,
-        previewUrl: e.target.result,
-        isImage: isImg,
+        type: file.type || (isDocx ? 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' : 'application/octet-stream'),
+        previewUrl: null,
+        isImage: false,
+        isDocx: isDocx,
+        isPdf: isPdf,
       });
+    }
+
+    if (isDocx) {
+      try {
+        setIsParsingDocx(true);
+        setDocxParseSummary('Đang tự động đọc nội dung và cấu trúc file Word...');
+        const res = await parseDocxFile(file);
+        if (res?.success) {
+          if (res.title) {
+            handleNameChange(res.title);
+          }
+          if (res.suggestedCode) {
+            setNewTypeCode(res.suggestedCode);
+          }
+          if (res.category) {
+            setNewTypeCategory(res.category);
+          }
+          if (res.department) {
+            setNewTypeDepartment(res.department);
+          }
+          if (res.customFields && Array.isArray(res.customFields) && res.customFields.length > 0) {
+            setParsedFields(res.customFields);
+          }
+          setDocxParseSummary(
+            `Đã đọc file Word thành công! Bóc tách được ${res.customFields?.length || 0} trường nhập liệu và khớp với đơn vị "${res.department}".`
+          );
+        }
+      } catch (err) {
+        console.error('Lỗi khi bóc tách file Word docx:', err);
+        setDocxParseSummary(`Không thể tự động bóc tách (${err.message}). Bạn vẫn có thể tùy chỉnh các trường bên dưới.`);
+      } finally {
+        setIsParsingDocx(false);
+      }
+    } else {
       // Nếu chưa có tên đơn, gợi ý theo tên file
       if (!newTypeName.trim()) {
         const rawName = file.name.replace(/\.[^/.]+$/, '').replace(/[-_]/g, ' ');
         handleNameChange(rawName.charAt(0).toUpperCase() + rawName.slice(1));
       }
-    };
-    reader.readAsDataURL(file);
+    }
   };
 
   // Bật camera để chụp ảnh mẫu đơn trực tiếp
@@ -588,6 +665,7 @@ export default function AdminDashboardPage({ user, logoSrc = DEFAULT_LOGO_SRC, o
       templateFileSize: uploadedFile ? uploadedFile.size : '—',
       templateFileUrl: uploadedFile ? uploadedFile.previewUrl : null,
       isImage: uploadedFile ? uploadedFile.isImage : false,
+      fields: parsedFields,
       createdAt: new Date().toLocaleDateString('vi-VN'),
     };
 
@@ -607,6 +685,8 @@ export default function AdminDashboardPage({ user, logoSrc = DEFAULT_LOGO_SRC, o
     setNewTypeCode('');
     setNewTypeDescription('');
     setUploadedFile(null);
+    setParsedFields([]);
+    setDocxParseSummary('');
 
     setActionSuccessMsg(`Đã tạo và số hóa thành công loại đơn mới: "${newTypeItem.name}"!`);
     setTimeout(() => setActionSuccessMsg(''), 4500);
@@ -1829,6 +1909,11 @@ export default function AdminDashboardPage({ user, logoSrc = DEFAULT_LOGO_SRC, o
                             className="h-full w-full object-cover"
                           />
                         </div>
+                      ) : uploadedFile.isDocx ? (
+                        <div className="flex h-20 w-16 shrink-0 flex-col items-center justify-center rounded-xl bg-blue-600 text-white shadow-sm">
+                          <FileText className="h-7 w-7 mb-0.5" />
+                          <span className="text-[10px] font-bold tracking-wider">DOCX</span>
+                        </div>
                       ) : (
                         <div className="flex h-20 w-16 shrink-0 items-center justify-center rounded-lg bg-red-100 text-red-600 font-bold text-xs">
                           PDF
@@ -1850,7 +1935,7 @@ export default function AdminDashboardPage({ user, logoSrc = DEFAULT_LOGO_SRC, o
                     <input
                       type="file"
                       ref={fileInputRef}
-                      accept="image/*,.pdf"
+                      accept=".docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document,image/*,.pdf"
                       onChange={(e) => handleFileSelected(e.target.files?.[0])}
                       className="hidden"
                     />
@@ -1868,10 +1953,10 @@ export default function AdminDashboardPage({ user, logoSrc = DEFAULT_LOGO_SRC, o
                     </div>
 
                     <p className="text-xs sm:text-sm font-semibold text-slate-800">
-                      Tải file mẫu đơn (PDF / Ảnh chụp) hoặc Chụp trực tiếp
+                      Tải file mẫu đơn Word (.docx) / PDF / Ảnh chụp hoặc Chụp trực tiếp
                     </p>
                     <p className="mt-1 text-xs text-slate-400">
-                      Hệ thống tự động chuyển đổi file gửi lên thành mẫu đơn điện tử
+                      Hệ thống tự động đọc cấu trúc file Word và chuyển thành biểu mẫu nhập liệu
                     </p>
 
                     <div className="mt-4 flex flex-wrap items-center justify-center gap-2.5">
@@ -1881,7 +1966,7 @@ export default function AdminDashboardPage({ user, logoSrc = DEFAULT_LOGO_SRC, o
                         className="flex cursor-pointer items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3.5 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-50 shadow-2xs"
                       >
                         <Upload className="h-3.5 w-3.5 text-[#2563EB]" />
-                        <span>Chọn file từ máy tính</span>
+                        <span>Chọn file Word (.docx) / PDF</span>
                       </button>
 
                       <button
@@ -1893,6 +1978,21 @@ export default function AdminDashboardPage({ user, logoSrc = DEFAULT_LOGO_SRC, o
                         <span>Chụp ảnh từ Camera</span>
                       </button>
                     </div>
+                  </div>
+                )}
+
+                {/* Trạng thái bóc tách file Word */}
+                {isParsingDocx && (
+                  <div className="flex items-center gap-2.5 rounded-xl border border-blue-200 bg-blue-50/80 p-3 text-xs text-blue-800">
+                    <div className="h-4 w-4 animate-spin rounded-full border-2 border-blue-600 border-t-transparent shrink-0" />
+                    <span>Đang tự động đọc cấu trúc văn bản và bóc tách câu hỏi từ file Word...</span>
+                  </div>
+                )}
+
+                {docxParseSummary && !isParsingDocx && (
+                  <div className="flex items-start gap-2 rounded-xl border border-emerald-200 bg-emerald-50/80 p-3 text-xs text-emerald-800">
+                    <CheckCircle2 className="h-4 w-4 text-emerald-600 shrink-0 mt-0.5" />
+                    <span className="leading-relaxed font-medium">{docxParseSummary}</span>
                   </div>
                 )}
               </div>
@@ -1998,6 +2098,83 @@ export default function AdminDashboardPage({ user, logoSrc = DEFAULT_LOGO_SRC, o
                 </div>
               </div>
 
+              {/* 3. CẤU HÌNH CÁC TRƯỜNG NHẬP LIỆU (TỰ ĐỘNG BÓC TÁCH HOẶC TỰ THÊM) */}
+              <div className="space-y-3 pt-2 border-t border-slate-100">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider">
+                      3. Các trường thông tin cần điền ({parsedFields.length} trường):
+                    </label>
+                    <p className="text-[11px] text-slate-500">
+                      Tự động trích xuất từ file Word. Sinh viên sẽ điền trực tiếp trên hệ thống các trường này.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={handleAddCustomField}
+                    className="flex items-center gap-1 rounded-xl border border-blue-200 bg-blue-50 px-2.5 py-1 text-xs font-semibold text-[#2563EB] hover:bg-blue-100 transition-colors shadow-2xs"
+                  >
+                    <Plus className="h-3.5 w-3.5" />
+                    <span>Thêm trường</span>
+                  </button>
+                </div>
+
+                {parsedFields.length === 0 ? (
+                  <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50/60 p-4 text-center text-xs text-slate-500">
+                    Chưa có trường nhập liệu riêng. Khi bạn chọn file Word (.docx), hệ thống sẽ tự động bóc tách các dòng câu hỏi thành form tại đây.
+                  </div>
+                ) : (
+                  <div className="space-y-2 max-h-56 overflow-y-auto pr-1">
+                    {parsedFields.map((field, idx) => (
+                      <div
+                        key={field.id}
+                        className="flex flex-wrap sm:flex-nowrap items-center gap-2 rounded-xl border border-slate-200 bg-slate-50/70 p-2.5 hover:border-blue-200 transition-colors"
+                      >
+                        <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-slate-200 text-[10px] font-bold text-slate-600">
+                          {idx + 1}
+                        </span>
+                        <div className="flex-1 min-w-[140px]">
+                          <input
+                            type="text"
+                            value={field.label}
+                            onChange={(e) => handleUpdateCustomField(field.id, 'label', e.target.value)}
+                            placeholder="Tên câu hỏi / trường nhập..."
+                            className="w-full rounded-lg border border-slate-300 bg-white px-2 py-1 text-xs text-slate-800 focus:border-[#2563EB] focus:outline-none"
+                          />
+                        </div>
+                        <select
+                          value={field.type}
+                          onChange={(e) => handleUpdateCustomField(field.id, 'type', e.target.value)}
+                          className="rounded-lg border border-slate-300 bg-white px-2 py-1 text-xs text-slate-700 focus:border-[#2563EB] focus:outline-none shrink-0"
+                        >
+                          <option value="text">Chữ ngắn (text)</option>
+                          <option value="number">Số (number)</option>
+                          <option value="date">Ngày tháng (date)</option>
+                          <option value="textarea">Văn bản dài (textarea)</option>
+                        </select>
+                        <label className="flex items-center gap-1 text-[11px] text-slate-600 whitespace-nowrap cursor-pointer shrink-0">
+                          <input
+                            type="checkbox"
+                            checked={field.required}
+                            onChange={(e) => handleUpdateCustomField(field.id, 'required', e.target.checked)}
+                            className="rounded border-slate-300 text-[#2563EB] focus:ring-0"
+                          />
+                          <span>Bắt buộc</span>
+                        </label>
+                        <button
+                          type="button"
+                          onClick={() => handleRemoveCustomField(field.id)}
+                          className="p-1 text-slate-400 hover:text-red-500 transition-colors shrink-0"
+                          title="Xóa trường này"
+                        >
+                          <X className="h-4 w-4" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
               {/* Nút hành động */}
               <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-100">
                 <button
@@ -2005,6 +2182,8 @@ export default function AdminDashboardPage({ user, logoSrc = DEFAULT_LOGO_SRC, o
                   onClick={() => {
                     stopCamera();
                     setIsAddTypeModalOpen(false);
+                    setParsedFields([]);
+                    setDocxParseSummary('');
                   }}
                   className="rounded-xl border border-slate-200 px-4 py-2 text-xs font-medium text-slate-600 hover:bg-slate-50"
                 >
@@ -2121,6 +2300,23 @@ export default function AdminDashboardPage({ user, logoSrc = DEFAULT_LOGO_SRC, o
                 </div>
                 <div><strong>Mô tả thủ tục:</strong> {viewingTemplate.description}</div>
                 <div><strong>Thời hạn xử lý (SLA):</strong> {viewingTemplate.slaDays} ngày làm việc kể từ khi nhận đủ hồ sơ</div>
+                {viewingTemplate.fields && viewingTemplate.fields.length > 0 && (
+                  <div className="pt-2 border-t border-slate-100">
+                    <strong className="text-blue-700 block mb-1">
+                      Các trường số hóa tự động ({viewingTemplate.fields.length} trường):
+                    </strong>
+                    <div className="flex flex-wrap gap-1.5">
+                      {viewingTemplate.fields.map((f, i) => (
+                        <span
+                          key={f.id || i}
+                          className="rounded-lg bg-blue-50 border border-blue-200 px-2 py-0.5 text-[11px] font-medium text-blue-800"
+                        >
+                          {f.label} ({f.type === 'textarea' ? 'Văn bản dài' : f.type === 'date' ? 'Ngày tháng' : f.type === 'number' ? 'Số' : 'Chữ'})
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
 

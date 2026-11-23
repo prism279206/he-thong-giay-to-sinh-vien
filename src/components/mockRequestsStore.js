@@ -482,7 +482,7 @@ export function finalizeAndNotifyStudentByAdmin(
   return updated;
 }
 
-export const REQUEST_TYPES_STORAGE_KEY = 'vmh_request_types_store_v3';
+export const REQUEST_TYPES_STORAGE_KEY = 'vmh_request_types_store_v4';
 
 export const INITIAL_REQUEST_TYPES = [
   {
@@ -498,6 +498,7 @@ export const INITIAL_REQUEST_TYPES = [
     templateFileName: 'Mau_Don_Xac_Nhan_HSSV.pdf',
     templateFileSize: '124 KB',
     templateFileUrl: null,
+    fields: [],
   },
   {
     id: 'rt-transcript',
@@ -512,6 +513,11 @@ export const INITIAL_REQUEST_TYPES = [
     templateFileName: 'Mau_Don_Xin_Cap_Bang_Diem.pdf',
     templateFileSize: '98 KB',
     templateFileUrl: null,
+    fields: [
+      { id: 'f_so_luong', label: 'Số lượng bản cần cấp', type: 'number', required: true, placeholder: 'VD: 2' },
+      { id: 'f_loai_bang_diem', label: 'Loại bảng điểm (Toàn khóa / Từng kỳ)', type: 'text', required: true, placeholder: 'VD: Toàn khóa tích lũy' },
+      { id: 'f_muc_dich', label: 'Mục đích sử dụng', type: 'textarea', required: true, placeholder: 'VD: Bổ sung hồ sơ xin thực tập doanh nghiệp...' },
+    ],
   },
   {
     id: 'rt-graduation-cert',
@@ -526,6 +532,10 @@ export const INITIAL_REQUEST_TYPES = [
     templateFileName: 'Mau_Don_Xin_Cap_CNTN_Tam_Thoi.pdf',
     templateFileSize: '110 KB',
     templateFileUrl: null,
+    fields: [
+      { id: 'f_so_luong_cntn', label: 'Số lượng bản cần cấp', type: 'number', required: true, placeholder: 'VD: 1' },
+      { id: 'f_dot_tot_nghiep', label: 'Đợt xét tốt nghiệp', type: 'text', required: false, placeholder: 'VD: Đợt 1 năm 2026' },
+    ],
   },
   {
     id: 'rt-recheck-exam',
@@ -540,6 +550,14 @@ export const INITIAL_REQUEST_TYPES = [
     templateFileName: 'Mau_Don_Xin_Phuc_Khao_Bai_Thi.pdf',
     templateFileSize: '112 KB',
     templateFileUrl: null,
+    fields: [
+      { id: 'f_mon_thi', label: 'Tên môn thi / học phần', type: 'text', required: true, placeholder: 'VD: Lập trình Web nâng cao' },
+      { id: 'f_ma_mon', label: 'Mã học phần', type: 'text', required: false, placeholder: 'VD: WEB201' },
+      { id: 'f_diem_cu', label: 'Điểm đã công bố', type: 'text', required: true, placeholder: 'VD: 4.5' },
+      { id: 'f_ngay_thi', label: 'Ngày thi', type: 'date', required: true },
+      { id: 'f_ca_thi', label: 'Ca thi / Phòng thi', type: 'text', required: false, placeholder: 'VD: Ca 2, P.302' },
+      { id: 'f_ly_do', label: 'Lý do xin chấm phúc khảo', type: 'textarea', required: true, placeholder: 'Nêu rõ bài làm hoặc thắc mắc về điểm...' },
+    ],
   },
 ];
 

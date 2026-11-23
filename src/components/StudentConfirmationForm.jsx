@@ -12,6 +12,7 @@ import {
   RotateCcw as ResetIcon,
   Check,
   Trash2,
+  Sparkles,
 } from 'lucide-react';
 import logoCdvm from '../assets/images/logocđvm.jpg';
 import { addStudentRequest } from './mockRequestsStore';
@@ -125,6 +126,17 @@ function processSignatureImage(imgElement, threshold = 205, inkColorMode = 'blue
 function StudentConfirmationForm({ onBack, user, requestType }) {
   const [formData, setFormData] = useState(() => getStudentCmsData(user));
   const [currentDateText] = useState(getFormattedCurrentDate);
+
+  // Lưu trữ giá trị cho các trường câu hỏi riêng biệt theo loại đơn (bóc tách từ file Word)
+  const [customFieldValues, setCustomFieldValues] = useState(() => {
+    const initial = {};
+    if (requestType?.fields && Array.isArray(requestType.fields)) {
+      requestType.fields.forEach((f) => {
+        initial[f.id] = '';
+      });
+    }
+    return initial;
+  });
 
   // Đồng bộ thông tin sinh viên mới nhất từ API CMS nếu có
   useEffect(() => {
@@ -272,7 +284,29 @@ function StudentConfirmationForm({ onBack, user, requestType }) {
       alert('Vui lòng không để trống Họ tên và Mã sinh viên.');
       return;
     }
-    if (!formData.reason.trim()) {
+
+    // Kiểm tra các trường câu hỏi riêng theo mẫu đơn (nếu có bắt buộc)
+    if (requestType?.fields && requestType.fields.length > 0) {
+      for (const f of requestType.fields) {
+        if (f.required && !customFieldValues[f.id]?.toString().trim()) {
+          alert(`Vui lòng điền mục: "${f.label}".`);
+          return;
+        }
+      }
+    }
+
+    // Xác định lý do: nếu form đã có trường câu hỏi riêng về lý do/nội dung thì tự động kế thừa
+    const customReasonField = requestType?.fields?.find((f) =>
+      /lý do|mục đích|nội dung|nguyện vọng/i.test(f.label)
+    );
+    const resolvedReason =
+      formData.reason.trim() ||
+      (customReasonField ? customFieldValues[customReasonField.id]?.trim() : '') ||
+      (requestType?.fields && requestType.fields.length > 0
+        ? 'Theo các nội dung kê khai chi tiết trong đơn.'
+        : '');
+
+    if (!resolvedReason && (!requestType?.fields || requestType.fields.length === 0)) {
       alert(`Vui lòng nhập lý do làm ${requestType?.name ? requestType.name.toLowerCase() : 'đơn'}.`);
       return;
     }
@@ -280,6 +314,14 @@ function StudentConfirmationForm({ onBack, user, requestType }) {
     const now = new Date();
     const timeStr = `${String(now.getDate()).padStart(2, '0')}/${String(now.getMonth() + 1).padStart(2, '0')}/${now.getFullYear()} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
     const newRequestId = `#2026-${Math.floor(1000 + Math.random() * 9000)}`;
+
+    // Gom dữ liệu các trường tùy biến kèm label để hiển thị
+    const customFieldsData = (requestType?.fields || []).map((f) => ({
+      id: f.id,
+      label: f.label,
+      type: f.type,
+      value: customFieldValues[f.id] || '',
+    }));
 
     const newRequestPayload = {
       id: newRequestId,
@@ -304,7 +346,9 @@ function StudentConfirmationForm({ onBack, user, requestType }) {
       createdAt: timeStr,
       status: 'pending',
       statusLabel: 'Chờ tiếp nhận',
-      reason: formData.reason.trim(),
+      reason: resolvedReason,
+      customFields: customFieldValues,
+      customFieldsData: customFieldsData,
       urgency: 'normal',
       distributionStatus: 'unassigned',
       assignedTo: null,
@@ -600,22 +644,119 @@ function StudentConfirmationForm({ onBack, user, requestType }) {
               </div>
             </div>
 
-            {/* Nhóm 3: Lý do xin xác nhận (mặc định để trống) */}
+            {/* Nhóm thông tin chi tiết bóc tách từ file Word mẫu */}
+            {requestType?.fields && requestType.fields.length > 0 && (
+              <div className="space-y-3 pt-3 border-t border-slate-100">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-1.5">
+                    <Sparkles className="h-4 w-4 text-[#2563EB]" />
+                    <h3 className="text-xs font-bold tracking-wider text-slate-800 uppercase">
+                      3. Nội dung cụ thể của đơn ({requestType.fields.length} mục)
+                    </h3>
+                  </div>
+                  <span className="rounded-full bg-blue-50 px-2.5 py-0.5 text-[10px] font-semibold text-[#2563EB]">
+                    Số hóa từ file Word
+                  </span>
+                </div>
+                <p className="text-[11px] text-slate-500">
+                  Các trường thông tin này được hệ thống tự động bóc tách từ mẫu đơn của trường. Vui lòng điền đầy đủ bên dưới:
+                </p>
+
+                <div className="space-y-3 rounded-2xl border border-blue-100 bg-blue-50/30 p-3.5">
+                  {requestType.fields.map((field) => (
+                    <div key={field.id}>
+                      <label className="block text-xs font-semibold text-slate-700 mb-1">
+                        {field.label} {field.required && <span className="text-red-500">*</span>}
+                      </label>
+                      {field.type === 'textarea' ? (
+                        <textarea
+                          rows={3}
+                          value={customFieldValues[field.id] || ''}
+                          onChange={(e) =>
+                            setCustomFieldValues((prev) => ({
+                              ...prev,
+                              [field.id]: e.target.value,
+                            }))
+                          }
+                          placeholder={field.placeholder || `Nhập ${field.label.toLowerCase()}...`}
+                          className="w-full rounded-xl border border-slate-300 bg-white p-2.5 text-xs text-slate-800 focus:border-[#2563EB] focus:outline-none"
+                          required={field.required}
+                        />
+                      ) : field.type === 'date' ? (
+                        <input
+                          type="date"
+                          value={customFieldValues[field.id] || ''}
+                          onChange={(e) =>
+                            setCustomFieldValues((prev) => ({
+                              ...prev,
+                              [field.id]: e.target.value,
+                            }))
+                          }
+                          className="w-full rounded-xl border border-slate-300 bg-white p-2.5 text-xs text-slate-800 focus:border-[#2563EB] focus:outline-none"
+                          required={field.required}
+                        />
+                      ) : field.type === 'number' ? (
+                        <input
+                          type="number"
+                          value={customFieldValues[field.id] || ''}
+                          onChange={(e) =>
+                            setCustomFieldValues((prev) => ({
+                              ...prev,
+                              [field.id]: e.target.value,
+                            }))
+                          }
+                          placeholder={field.placeholder || `Nhập ${field.label.toLowerCase()}...`}
+                          className="w-full rounded-xl border border-slate-300 bg-white p-2.5 text-xs text-slate-800 focus:border-[#2563EB] focus:outline-none"
+                          required={field.required}
+                        />
+                      ) : (
+                        <input
+                          type="text"
+                          value={customFieldValues[field.id] || ''}
+                          onChange={(e) =>
+                            setCustomFieldValues((prev) => ({
+                              ...prev,
+                              [field.id]: e.target.value,
+                            }))
+                          }
+                          placeholder={field.placeholder || `Nhập ${field.label.toLowerCase()}...`}
+                          className="w-full rounded-xl border border-slate-300 bg-white p-2.5 text-xs text-slate-800 focus:border-[#2563EB] focus:outline-none"
+                          required={field.required}
+                        />
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Nhóm lý do làm đơn */}
             <div className="space-y-3 pt-3 border-t border-slate-100">
               <div className="flex items-center justify-between">
                 <h3 className="text-xs font-bold tracking-wider text-slate-800 uppercase">
-                  3. Lý do đề nghị cấp giấy <span className="text-red-500">*</span>
+                  {requestType?.fields && requestType.fields.length > 0
+                    ? '4. Ghi chú / Lý do bổ sung (nếu có)'
+                    : '3. Lý do đề nghị cấp giấy'}
+                  {(!requestType?.fields || requestType.fields.length === 0) && (
+                    <span className="text-red-500"> *</span>
+                  )}
                 </h3>
-                <span className="text-[11px] text-slate-400">Bắt buộc</span>
+                <span className="text-[11px] text-slate-400">
+                  {requestType?.fields && requestType.fields.length > 0 ? 'Tùy chọn' : 'Bắt buộc'}
+                </span>
               </div>
 
               <textarea
                 rows={3}
                 value={formData.reason}
                 onChange={(e) => handleChange('reason', e.target.value)}
-                placeholder="Nhập lý do cụ thể cần cấp giấy xác nhận HSSV (ví dụ: Vay vốn ngân hàng chính sách xã hội, tạm hoãn nghĩa vụ quân sự...)"
+                placeholder={
+                  requestType?.fields && requestType.fields.length > 0
+                    ? 'Bổ sung thêm ý kiến, nguyện vọng hoặc lưu ý đặc biệt...'
+                    : 'Nhập lý do cụ thể cần làm đơn (ví dụ: Vay vốn ngân hàng, tạm hoãn nghĩa vụ quân sự...)'
+                }
                 className="w-full rounded-xl border border-slate-200 bg-white p-3 text-sm text-slate-800 focus:border-[#2563EB] focus:outline-none"
-                required
+                required={!requestType?.fields || requestType.fields.length === 0}
               />
             </div>
 
@@ -946,25 +1087,42 @@ function StudentConfirmationForm({ onBack, user, requestType }) {
                 <span> tại Trường Cao đẳng Việt Mỹ Hà Nội</span>
               </div>
 
-              {/* Lý do đề nghị cấp giấy */}
+              {/* Các trường nội dung chi tiết theo mẫu đơn số hóa */}
+              {requestType?.fields && requestType.fields.length > 0 && (
+                <div className="pt-2 space-y-1.5 text-[14px]">
+                  <p className="font-bold underline">Nội dung chi tiết của đơn:</p>
+                  <div className="space-y-1 pl-3">
+                    {requestType.fields.map((f) => (
+                      <div key={f.id} className="flex flex-wrap items-baseline gap-x-2">
+                        <span>- {f.label}:</span>
+                        <span className={customFieldValues[f.id] ? 'font-bold' : 'italic text-slate-500'}>
+                          {customFieldValues[f.id] || '................................................................'}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Lý do đề nghị cấp giấy / bổ sung */}
               <div className="pt-2">
                 <p>
                   Em làm đơn này kính đề nghị nhà trường{' '}
                   {requestType?.name ? `xem xét và giải quyết ${requestType.name.toLowerCase()}` : 'cấp giấy xác nhận HSSV'}{' '}
-                  với lý do:
+                  {requestType?.fields && requestType.fields.length > 0 ? 'với các ghi chú / lý do:' : 'với lý do:'}
                 </p>
                 {formData.reason ? (
-                  <p className="mt-1 min-h-[50px] text-justify italic">
+                  <p className="mt-1 min-h-[40px] text-justify italic">
                     {formData.reason}
                   </p>
-                ) : (
+                ) : (!requestType?.fields || requestType.fields.length === 0) ? (
                   <div className="space-y-2 pt-1">
                     <div className="border-b border-dotted border-black/70 h-4"></div>
                     <div className="border-b border-dotted border-black/70 h-4"></div>
                     <div className="border-b border-dotted border-black/70 h-4"></div>
                     <div className="border-b border-dotted border-black/70 h-4"></div>
                   </div>
-                )}
+                ) : null}
               </div>
 
               {/* Lời cam đoan */}
