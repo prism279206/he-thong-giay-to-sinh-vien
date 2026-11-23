@@ -158,19 +158,32 @@ export function normalizeVietnameseText(str) {
 export function identifyCmsField(rawLabel) {
   const norm = normalizeVietnameseText(rawLabel);
 
-  if (/^(ho va ten|ho ten|ten em la|ten sinh vien|ho va ten sinh vien)\b/.test(norm)) {
+  if (
+    /^(ho va ten|ho ten|ten em la|em ten la|toi ten la|ten sinh vien|ho va ten sinh vien|ho va ten hssv|ho ten hssv|ho ten hoc sinh|ten hoc sinh)\b/.test(norm) ||
+    norm.includes('em ten la') ||
+    norm.includes('ten em la') ||
+    norm.includes('toi ten la') ||
+    norm.includes('ho va ten') ||
+    (norm.includes('ho ten') && !norm.includes('hoc phan')) ||
+    /^ho\s*ten\b/.test(norm)
+  ) {
     return { key: 'fullName', label: 'Họ và tên', cmsKey: 'hoTen' };
   }
   if (
-    /^(ma sinh vien|ma so sinh vien|mssv|ma sv|ms sv|so the sinh vien)\b/.test(norm) ||
-    norm.includes('mssv')
+    /^(ma sinh vien|ma so sinh vien|mssv|ma sv|ms sv|so the sinh vien|so the sv)\b/.test(norm) ||
+    norm.includes('mssv') ||
+    norm.includes('ma sinh vien') ||
+    norm.includes('ma so sinh vien')
   ) {
     return { key: 'studentCode', label: 'Mã số sinh viên (MSSV)', cmsKey: 'maSinhVien' };
   }
-  if (/^(ngay sinh|sinh ngay|nam sinh)\b/.test(norm)) {
+  if (/^(gioi tinh|nam\/nu|nam, nu|nam nu)\b/.test(norm) || norm.includes('gioi tinh')) {
+    return { key: 'gender', label: 'Giới tính', cmsKey: 'gioiTinh' };
+  }
+  if (/^(ngay sinh|sinh ngay|nam sinh|ngay thang nam sinh)\b/.test(norm) || norm.includes('ngay sinh')) {
     return { key: 'dob', label: 'Ngày sinh', cmsKey: 'ngaySinh' };
   }
-  if (/^(noi sinh|que quan|noi cu tru|ho khau|ho khau thuong tru|dia chi thuong tru)\b/.test(norm)) {
+  if (/^(noi sinh|que quan|noi cu tru|ho khau|ho khau thuong tru|dia chi thuong tru|noi o hien nay)\b/.test(norm)) {
     return { key: 'pob', label: 'Nơi sinh / Quê quán', cmsKey: 'noiSinh' };
   }
   if (/(cccd|cmnd|can cuoc|dinh danh)/.test(norm)) {
@@ -180,8 +193,14 @@ export function identifyCmsField(rawLabel) {
       return { key: 'idCardPlace', label: 'Nơi cấp CCCD', cmsKey: 'noiCapCccd' };
     return { key: 'idCardNumber', label: 'Số CCCD / Định danh', cmsKey: 'cccd' };
   }
+  if (/^(ngay cap|ngay cap cccd|ngay cap cmnd)\b/.test(norm) || norm.includes('ngay cap')) {
+    return { key: 'idCardDate', label: 'Ngày cấp CCCD', cmsKey: 'ngayCapCccd' };
+  }
+  if (/^(noi cap|noi cap cccd|noi cap cmnd)\b/.test(norm) || norm.includes('noi cap')) {
+    return { key: 'idCardPlace', label: 'Nơi cấp CCCD', cmsKey: 'noiCapCccd' };
+  }
   if (
-    /^(lop|sinh vien lop|lop hoc|lop chuyen nganh)\b/.test(norm) &&
+    /^(lop|sinh vien lop|lop hoc|lop chuyen nganh|lop sinh hoat)\b/.test(norm) &&
     !/hoc phan|mon hoc/.test(norm)
   ) {
     return { key: 'className', label: 'Lớp học', cmsKey: 'lop' };
@@ -193,7 +212,7 @@ export function identifyCmsField(rawLabel) {
     return { key: 'major', label: 'Chuyên ngành đào tạo', cmsKey: 'nganh' };
   }
   if (
-    /^(so dien thoai|sdt|dien thoai|sdt lien he|dien thoai lien lac|so dt)\b/.test(norm) ||
+    /^(so dien thoai|sdt|dien thoai|sdt lien he|dien thoai lien lac|so dt|dien thoai ca nhan)\b/.test(norm) ||
     norm.includes('sdt') ||
     norm.includes('dien thoai')
   ) {
@@ -202,14 +221,29 @@ export function identifyCmsField(rawLabel) {
   if (/^(khoa hoc|nien khoa)\b/.test(norm) || (/^khoa\b/.test(norm) && /k\d+|\d{4}/.test(norm))) {
     return { key: 'cohort', label: 'Khóa học', cmsKey: 'khoaHoc' };
   }
-  if (/^(he dao tao|hinh thuc dao tao|bac dao tao)\b/.test(norm)) {
+  if (/^(he dao tao|hinh thuc dao tao|bac dao tao|he hoc)\b/.test(norm)) {
     return { key: 'trainingSystem', label: 'Hệ đào tạo', cmsKey: 'trainingSystem' };
   }
-  if (/^(co so|dia diem hoc tap|co so dao tao)\b/.test(norm)) {
+  if (/^(co so|dia diem hoc tap|co so dao tao|co so hoc tap)\b/.test(norm)) {
     return { key: 'campus', label: 'Cơ sở học tập', cmsKey: 'campus' };
   }
 
   return null;
+}
+
+/**
+ * Kiểm tra xem nhãn có phải là lý do/mục đích làm đơn chuẩn không
+ * (Trường lý do đã có sẵn cố định trong mọi biểu mẫu nộp đơn, không tách thành custom field)
+ */
+export function isStandardReasonField(rawLabel) {
+  const norm = normalizeVietnameseText(rawLabel);
+  return (
+    /^(ly do|muc dich|nguyen vong|ly do xin|ly do de nghi|ly do lam don|muc dich xin|de lam thu tuc|de lam giay to|de nop)\b/.test(norm) ||
+    norm.startsWith('kinh de nghi nha truong') ||
+    norm.startsWith('em lam don nay de') ||
+    norm.startsWith('de nghi cap giay') ||
+    norm.startsWith('muc dich su dung')
+  );
 }
 
 /**
@@ -263,7 +297,9 @@ export function analyzeDocumentStructure(rawText, defaultFileName = '') {
   let detectedTitle = '';
   for (const line of lines) {
     if (line.startsWith('|') || line.startsWith('#') || line.includes('`')) continue;
-    if (/^\s*(?:ĐƠN|GIẤY|BẢN|PHIẾU)\s+[A-ZÀ-Ỹa-zà-ỹ0-9\s–—-]{3,}/i.test(line)) {
+    const normLine = normalizeVietnameseText(line);
+    if (normLine.startsWith('cong hoa') || normLine.startsWith('doc lap')) continue;
+    if (/^\s*(?:ĐƠN|GIẤY|BẢN|PHIẾU|DON|GIAY|BAN|PHIEU)\b/i.test(line)) {
       detectedTitle = line.replace(/^[#*\s-]+|[#*\s-]+$/g, '').trim();
       break;
     }
@@ -274,8 +310,9 @@ export function analyzeDocumentStructure(rawText, defaultFileName = '') {
     for (let i = 0; i < Math.min(lines.length, 12); i++) {
       const line = lines[i];
       if (line.startsWith('|') || line.startsWith('#') || line.includes('`')) continue;
-      if (/cộng hòa|độc lập|hà nội|ngày\s+tháng/i.test(line)) continue;
-      if (line === line.toUpperCase() && line.length >= 8 && line.length <= 80 && /[A-ZÀ-Ỹ]/.test(line)) {
+      const normLine = normalizeVietnameseText(line);
+      if (normLine.startsWith('cong hoa') || normLine.startsWith('doc lap') || normLine.startsWith('ha noi') || normLine.startsWith('ngay thang')) continue;
+      if (line === line.toUpperCase() && line.length >= 8 && line.length <= 80 && /[A-Za-zÀ-Ỹà-ỹ]/.test(line)) {
         detectedTitle = line.trim();
         break;
       }
@@ -334,7 +371,7 @@ export function analyzeDocumentStructure(rawText, defaultFileName = '') {
     // Tìm các cụm có dạng: "Tên nhãn: ........" hoặc "Tên nhãn: ________" hoặc "Tên nhãn: [khoảng trống]"
     const matches = [
       ...line.matchAll(
-        /(?:^|[.;\t•\n]+|\s{2,})([A-ZÀ-Ỹa-zà-ỹ0-9\s/()_-]+?)\s*[:：]\s*(?:[._{}—–-]{2,}|\s{2,}|$)/g
+        /(?:^|[.;\t•\n]+|\s+)([A-ZÀ-Ỹa-zà-ỹ0-9\s/()_-]+?)\s*[:：]\s*(?:[._{}—–-]{2,}|\s{2,}|$)/g
       ),
     ];
 
@@ -343,7 +380,10 @@ export function analyzeDocumentStructure(rawText, defaultFileName = '') {
       if (rawLabel.length < 2 || rawLabel.length > 60) continue;
       if (isBoilerplateLine(rawLabel)) continue;
 
-      // 4.1. Kiểm tra xem có phải thông tin sinh viên từ CMS không
+      // 4.1. Bỏ qua các nhãn lý do/mục đích làm đơn chuẩn (vì form mặc định đã luôn có ô nhập lý do riêng)
+      if (isStandardReasonField(rawLabel)) continue;
+
+      // 4.2. Kiểm tra xem có phải thông tin sinh viên từ CMS không
       const cmsMatch = identifyCmsField(rawLabel);
       if (cmsMatch) {
         if (!seenCmsKeys.has(cmsMatch.key)) {
@@ -359,7 +399,7 @@ export function analyzeDocumentStructure(rawText, defaultFileName = '') {
         continue;
       }
 
-      // 4.2. Các ô trống còn lại -> Đưa vào danh sách Custom Fields cho sinh viên tự điền
+      // 4.3. Các ô trống còn lại (ví dụ Môn thi, Mã học phần, Điểm số, Ca thi...) -> Đưa vào danh sách Custom Fields
       const normLabel = normalizeVietnameseText(rawLabel);
       if (seenCustomLabels.has(normLabel)) continue;
       seenCustomLabels.add(normLabel);
@@ -381,28 +421,7 @@ export function analyzeDocumentStructure(rawText, defaultFileName = '') {
     }
   }
 
-  // 5. Nếu chưa có trường câu hỏi nào, quét thêm các từ khóa câu hỏi dài như "Lý do", "Nội dung đề nghị"
-  if (customFields.length === 0) {
-    for (const line of lines) {
-      if (/^(lý do|nội dung|đề nghị|nguyện vọng)\b/i.test(line)) {
-        const cleanLabel = line.split(/[:：]/)[0].trim();
-        const normClean = normalizeVietnameseText(cleanLabel);
-        if (!seenCustomLabels.has(normClean)) {
-          customFields.push({
-            id: `field_1_${Math.random().toString(36).slice(2, 6)}`,
-            label: cleanLabel.charAt(0).toUpperCase() + cleanLabel.slice(1),
-            type: 'textarea',
-            required: true,
-            placeholder: `Nhập chi tiết ${cleanLabel.toLowerCase()}...`,
-          });
-          seenCustomLabels.add(normClean);
-          break;
-        }
-      }
-    }
-  }
-
-  // Nếu trong file không đề cập trực tiếp CMS fields, mặc định hệ thống vẫn liên kết bộ trường chuẩn
+  // 5. Nếu trong file không đề cập trực tiếp CMS fields, mặc định hệ thống vẫn liên kết bộ trường chuẩn
   if (detectedCmsFields.length === 0) {
     detectedCmsFields.push(
       { key: 'fullName', label: 'Họ và tên', cmsKey: 'hoTen' },
@@ -421,7 +440,10 @@ export function analyzeDocumentStructure(rawText, defaultFileName = '') {
     cmsFields: detectedCmsFields,
     customFields,
     rawText,
-    summary: `Đã tự động liên kết ${detectedCmsFields.length} mục thông tin với API CMS (Họ tên, MSSV, Lớp...) và bóc tách ${customFields.length} ô trống cho sinh viên tự điền.`,
+    summary:
+      customFields.length === 0
+        ? `Đã nhận diện đơn "${detectedTitle || 'Đơn mới'}". Giữ nguyên vẹn 100% mẫu gốc của trường: toàn bộ thông tin sinh viên (${detectedCmsFields.length} mục) tự động lấy từ CMS, sinh viên chỉ điền lý do và ký nộp.`
+        : `Đã tự động liên kết ${detectedCmsFields.length} mục với CMS và bóc tách ${customFields.length} ô trống cho sinh viên tự điền.`,
   };
 }
 

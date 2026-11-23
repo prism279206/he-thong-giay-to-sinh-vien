@@ -2208,8 +2208,13 @@ export default function AdminDashboardPage({ user, logoSrc = DEFAULT_LOGO_SRC, o
                   </div>
 
                   {parsedFields.length === 0 ? (
-                    <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50/60 p-4 text-center text-xs text-slate-500">
-                      Chưa có ô trống riêng nào. Khi bạn chọn file Word (.docx), hệ thống sẽ tự động quét các ô trống còn lại (Môn học, Mã HP, Điểm, Lý do...) và tạo form tại đây.
+                    <div className="rounded-xl border border-dashed border-emerald-300 bg-emerald-50/50 p-4 text-center text-xs text-emerald-800">
+                      <p className="font-semibold text-emerald-900">
+                        ✓ Mẫu đơn này giữ nguyên vẹn 100% bản gốc của trường
+                      </p>
+                      <p className="mt-1 text-[11px] text-emerald-700">
+                        Toàn bộ thông tin cá nhân được tự động điền từ CMS. Sinh viên chỉ cần điền lý do đề nghị và ký nộp (không phát sinh ô trống thừa).
+                      </p>
                     </div>
                   ) : (
                     <div className="space-y-2 max-h-56 overflow-y-auto pr-1">

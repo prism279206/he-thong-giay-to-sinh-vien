@@ -646,25 +646,21 @@ function StudentConfirmationForm({ onBack, user, requestType }) {
               </div>
             </div>
 
-            {/* Nhóm thông tin chi tiết bóc tách từ file Word mẫu */}
-            {requestType?.fields && requestType.fields.length > 0 && (
-              <div className="space-y-3 pt-3 border-t border-slate-100">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-1.5">
-                    <Sparkles className="h-4 w-4 text-[#2563EB]" />
-                    <h3 className="text-xs font-bold tracking-wider text-slate-800 uppercase">
-                      3. Nội dung cụ thể của đơn ({requestType.fields.length} mục)
-                    </h3>
-                  </div>
-                  <span className="rounded-full bg-blue-50 px-2.5 py-0.5 text-[10px] font-semibold text-[#2563EB]">
-                    Số hóa từ file Word
-                  </span>
-                </div>
-                <p className="text-[11px] text-slate-500">
-                  Các trường thông tin này được hệ thống tự động bóc tách từ mẫu đơn của trường. Vui lòng điền đầy đủ bên dưới:
-                </p>
+            {/* Nhóm 3: Lý do & Nội dung làm đơn */}
+            <div className="space-y-3 pt-3 border-t border-slate-100">
+              <div className="flex items-center justify-between">
+                <h3 className="text-xs font-bold tracking-wider text-slate-800 uppercase">
+                  {requestType?.fields && requestType.fields.length > 0
+                    ? '3. Nội dung đề nghị & Lý do làm đơn'
+                    : '3. Lý do đề nghị cấp giấy'}
+                  <span className="text-red-500"> *</span>
+                </h3>
+                <span className="text-[11px] text-slate-400">Bắt buộc</span>
+              </div>
 
-                <div className="space-y-3 rounded-2xl border border-blue-100 bg-blue-50/30 p-3.5">
+              {/* Nếu đơn có các mục câu hỏi riêng (ví dụ môn thi, ca thi) */}
+              {requestType?.fields && requestType.fields.length > 0 && (
+                <div className="space-y-3 rounded-2xl border border-slate-200 bg-slate-50/50 p-3.5 mb-2">
                   {requestType.fields.map((field) => (
                     <div key={field.id}>
                       <label className="block text-xs font-semibold text-slate-700 mb-1">
@@ -729,37 +725,24 @@ function StudentConfirmationForm({ onBack, user, requestType }) {
                     </div>
                   ))}
                 </div>
-              </div>
-            )}
+              )}
 
-            {/* Nhóm lý do làm đơn */}
-            <div className="space-y-3 pt-3 border-t border-slate-100">
-              <div className="flex items-center justify-between">
-                <h3 className="text-xs font-bold tracking-wider text-slate-800 uppercase">
-                  {requestType?.fields && requestType.fields.length > 0
-                    ? '4. Ghi chú / Lý do bổ sung (nếu có)'
-                    : '3. Lý do đề nghị cấp giấy'}
-                  {(!requestType?.fields || requestType.fields.length === 0) && (
-                    <span className="text-red-500"> *</span>
-                  )}
-                </h3>
-                <span className="text-[11px] text-slate-400">
-                  {requestType?.fields && requestType.fields.length > 0 ? 'Tùy chọn' : 'Bắt buộc'}
-                </span>
+              {/* Ô lý do làm đơn */}
+              <div>
+                {requestType?.fields && requestType.fields.length > 0 && (
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">
+                    Lý do / Nguyện vọng cụ thể: <span className="text-red-500">*</span>
+                  </label>
+                )}
+                <textarea
+                  rows={3}
+                  value={formData.reason}
+                  onChange={(e) => handleChange('reason', e.target.value)}
+                  placeholder="Nhập lý do cụ thể cần làm đơn (ví dụ: Vay vốn ngân hàng chính sách, tạm hoãn nghĩa vụ quân sự, nộp hồ sơ xin việc...)"
+                  className="w-full rounded-xl border border-slate-200 bg-white p-3 text-sm text-slate-800 focus:border-[#2563EB] focus:outline-none"
+                  required
+                />
               </div>
-
-              <textarea
-                rows={3}
-                value={formData.reason}
-                onChange={(e) => handleChange('reason', e.target.value)}
-                placeholder={
-                  requestType?.fields && requestType.fields.length > 0
-                    ? 'Bổ sung thêm ý kiến, nguyện vọng hoặc lưu ý đặc biệt...'
-                    : 'Nhập lý do cụ thể cần làm đơn (ví dụ: Vay vốn ngân hàng, tạm hoãn nghĩa vụ quân sự...)'
-                }
-                className="w-full rounded-xl border border-slate-200 bg-white p-3 text-sm text-slate-800 focus:border-[#2563EB] focus:outline-none"
-                required={!requestType?.fields || requestType.fields.length === 0}
-              />
             </div>
 
             {/* Nhóm 4: Ô chữ ký sinh viên (cho phép tự ký hoặc tải ảnh chữ ký lên) */}
@@ -1089,20 +1072,17 @@ function StudentConfirmationForm({ onBack, user, requestType }) {
                 <span> tại Trường Cao đẳng Việt Mỹ Hà Nội</span>
               </div>
 
-              {/* Các trường nội dung chi tiết theo mẫu đơn số hóa */}
+              {/* Nếu đơn có các mục câu hỏi riêng (ví dụ môn thi, ca thi) */}
               {requestType?.fields && requestType.fields.length > 0 && (
-                <div className="pt-2 space-y-1.5 text-[14px]">
-                  <p className="font-bold underline">Nội dung chi tiết của đơn:</p>
-                  <div className="space-y-1 pl-3">
-                    {requestType.fields.map((f) => (
-                      <div key={f.id} className="flex flex-wrap items-baseline gap-x-2">
-                        <span>- {f.label}:</span>
-                        <span className={customFieldValues[f.id] ? 'font-bold' : 'italic text-slate-500'}>
-                          {customFieldValues[f.id] || '................................................................'}
-                        </span>
-                      </div>
-                    ))}
-                  </div>
+                <div className="pt-2 space-y-1 text-[14px]">
+                  {requestType.fields.map((f) => (
+                    <div key={f.id} className="flex flex-wrap items-baseline gap-x-2">
+                      <span>- {f.label}:</span>
+                      <span className={customFieldValues[f.id] ? 'font-bold' : 'italic text-slate-500'}>
+                        {customFieldValues[f.id] || '................................................................'}
+                      </span>
+                    </div>
+                  ))}
                 </div>
               )}
 
@@ -1111,7 +1091,7 @@ function StudentConfirmationForm({ onBack, user, requestType }) {
                 <p>
                   Em làm đơn này kính đề nghị nhà trường{' '}
                   {requestType?.name ? `xem xét và giải quyết ${requestType.name.toLowerCase()}` : 'cấp giấy xác nhận HSSV'}{' '}
-                  {requestType?.fields && requestType.fields.length > 0 ? 'với các ghi chú / lý do:' : 'với lý do:'}
+                  với lý do:
                 </p>
                 {formData.reason ? (
                   <p className="mt-1 min-h-[40px] text-justify italic">
