@@ -11,6 +11,11 @@
 -- 1. Kích hoạt extension pgcrypto (nằm trong schema extensions trên Supabase)
 create extension if not exists pgcrypto with schema extensions;
 
+-- Cập nhật ràng buộc trạng thái hồ sơ bao gồm cả teacher_approved và overdue
+alter table public.requests drop constraint if exists requests_trang_thai_check;
+alter table public.requests add constraint requests_trang_thai_check
+  check (trang_thai in ('pending', 'in_progress', 'teacher_approved', 'completed', 'rejected', 'overdue'));
+
 -- 2. Hàm hỗ trợ tạo / cập nhật tài khoản an toàn vào auth.users và public.profiles
 create or replace function public.upsert_user_account(
   p_id uuid,
