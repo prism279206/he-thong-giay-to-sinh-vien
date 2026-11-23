@@ -372,6 +372,7 @@ export default function AdminDashboardPage({ user, logoSrc = DEFAULT_LOGO_SRC, o
   const [uploadedFile, setUploadedFile] = useState(null); // { name, size, type, previewUrl, isImage, isDocx }
   const [isCameraActive, setIsCameraActive] = useState(false);
   const [parsedFields, setParsedFields] = useState([]); // [{ id, label, type, required, placeholder }]
+  const [parsedCmsFields, setParsedCmsFields] = useState([]); // [{ key, label, cmsKey }]
   const [isParsingDocx, setIsParsingDocx] = useState(false);
   const [docxParseSummary, setDocxParseSummary] = useState('');
 
@@ -585,11 +586,15 @@ export default function AdminDashboardPage({ user, logoSrc = DEFAULT_LOGO_SRC, o
           if (res.department) {
             setNewTypeDepartment(res.department);
           }
-          if (res.customFields && Array.isArray(res.customFields) && res.customFields.length > 0) {
+          if (res.cmsFields && Array.isArray(res.cmsFields)) {
+            setParsedCmsFields(res.cmsFields);
+          }
+          if (res.customFields && Array.isArray(res.customFields)) {
             setParsedFields(res.customFields);
           }
           setDocxParseSummary(
-            `Đã đọc file Word thành công! Bóc tách được ${res.customFields?.length || 0} trường nhập liệu và khớp với đơn vị "${res.department}".`
+            res.summary ||
+              `Đã đọc file Word thành công! Tự động liên kết ${res.cmsFields?.length || 0} mục với CMS và bóc tách ${res.customFields?.length || 0} ô trống cho sinh viên tự điền.`
           );
         }
       } catch (err) {
@@ -674,6 +679,7 @@ export default function AdminDashboardPage({ user, logoSrc = DEFAULT_LOGO_SRC, o
       templateFileSize: uploadedFile ? uploadedFile.size : '—',
       templateFileUrl: uploadedFile ? uploadedFile.previewUrl : null,
       isImage: uploadedFile ? uploadedFile.isImage : false,
+      cmsFields: parsedCmsFields,
       fields: parsedFields,
       createdAt: new Date().toLocaleDateString('vi-VN'),
     };
@@ -696,6 +702,7 @@ export default function AdminDashboardPage({ user, logoSrc = DEFAULT_LOGO_SRC, o
     setNewTypeDescription('');
     setUploadedFile(null);
     setParsedFields([]);
+    setParsedCmsFields([]);
     setDocxParseSummary('');
 
     setActionSuccessMsg(`Đã tạo và số hóa thành công loại đơn mới: "${newTypeItem.name}"!`);
@@ -1883,6 +1890,9 @@ export default function AdminDashboardPage({ user, logoSrc = DEFAULT_LOGO_SRC, o
                 onClick={() => {
                   stopCamera();
                   setIsAddTypeModalOpen(false);
+                  setParsedFields([]);
+                  setParsedCmsFields([]);
+                  setDocxParseSummary('');
                 }}
                 className="rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-600"
               >
@@ -2137,81 +2147,121 @@ export default function AdminDashboardPage({ user, logoSrc = DEFAULT_LOGO_SRC, o
                 </div>
               </div>
 
-              {/* 3. CẤU HÌNH CÁC TRƯỜNG NHẬP LIỆU (TỰ ĐỘNG BÓC TÁCH HOẶC TỰ THÊM) */}
-              <div className="space-y-3 pt-2 border-t border-slate-100">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider">
-                      3. Các trường thông tin cần điền ({parsedFields.length} trường):
-                    </label>
-                    <p className="text-[11px] text-slate-500">
-                      Tự động trích xuất từ file Word. Sinh viên sẽ điền trực tiếp trên hệ thống các trường này.
-                    </p>
+              {/* 3. CẤU HÌNH CÁC TRƯỜNG: THÔNG TIN TỰ LẤY TỪ CMS & CÁC Ô TRỐNG CÒN LẠI */}
+              <div className="space-y-4 pt-3 border-t border-slate-100">
+                {/* 3.1. Các thông tin sinh viên tự động lấy từ API CMS */}
+                <div className="rounded-xl border border-emerald-200 bg-emerald-50/70 p-3.5 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-1.5 text-xs font-bold text-emerald-800 uppercase tracking-wide">
+                      <CheckCircle2 className="h-4 w-4 text-emerald-600" />
+                      <span>Thông tin tự động lấy từ API CMS ({parsedCmsFields.length > 0 ? parsedCmsFields.length : 5} mục):</span>
+                    </div>
+                    <span className="rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-semibold text-emerald-700">
+                      Sinh viên không cần gõ lại
+                    </span>
                   </div>
-                  <button
-                    type="button"
-                    onClick={handleAddCustomField}
-                    className="flex items-center gap-1 rounded-xl border border-blue-200 bg-blue-50 px-2.5 py-1 text-xs font-semibold text-[#2563EB] hover:bg-blue-100 transition-colors shadow-2xs"
-                  >
-                    <Plus className="h-3.5 w-3.5" />
-                    <span>Thêm trường</span>
-                  </button>
-                </div>
-
-                {parsedFields.length === 0 ? (
-                  <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50/60 p-4 text-center text-xs text-slate-500">
-                    Chưa có trường nhập liệu riêng. Khi bạn chọn file Word (.docx), hệ thống sẽ tự động bóc tách các dòng câu hỏi thành form tại đây.
-                  </div>
-                ) : (
-                  <div className="space-y-2 max-h-56 overflow-y-auto pr-1">
-                    {parsedFields.map((field, idx) => (
-                      <div
-                        key={field.id}
-                        className="flex flex-wrap sm:flex-nowrap items-center gap-2 rounded-xl border border-slate-200 bg-slate-50/70 p-2.5 hover:border-blue-200 transition-colors"
+                  <p className="text-[11px] text-emerald-700 leading-relaxed">
+                    Hệ thống tự động liên kết các mục này với dữ liệu từ API CMS của trường (Họ tên, MSSV, Lớp...). Khi sinh viên mở đơn, dữ liệu sẽ tự động điền sẵn:
+                  </p>
+                  <div className="flex flex-wrap gap-1.5 pt-1">
+                    {(parsedCmsFields.length > 0
+                      ? parsedCmsFields
+                      : [
+                          { label: 'Họ và tên' },
+                          { label: 'Mã số sinh viên (MSSV)' },
+                          { label: 'Ngày sinh' },
+                          { label: 'Lớp học' },
+                          { label: 'Chuyên ngành' },
+                          { label: 'Số điện thoại' },
+                        ]
+                    ).map((f, i) => (
+                      <span
+                        key={i}
+                        className="inline-flex items-center gap-1 rounded-lg border border-emerald-300 bg-white px-2 py-1 text-[11px] font-medium text-emerald-800 shadow-2xs"
                       >
-                        <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-slate-200 text-[10px] font-bold text-slate-600">
-                          {idx + 1}
-                        </span>
-                        <div className="flex-1 min-w-[140px]">
-                          <input
-                            type="text"
-                            value={field.label}
-                            onChange={(e) => handleUpdateCustomField(field.id, 'label', e.target.value)}
-                            placeholder="Tên câu hỏi / trường nhập..."
-                            className="w-full rounded-lg border border-slate-300 bg-white px-2 py-1 text-xs text-slate-800 focus:border-[#2563EB] focus:outline-none"
-                          />
-                        </div>
-                        <select
-                          value={field.type}
-                          onChange={(e) => handleUpdateCustomField(field.id, 'type', e.target.value)}
-                          className="rounded-lg border border-slate-300 bg-white px-2 py-1 text-xs text-slate-700 focus:border-[#2563EB] focus:outline-none shrink-0"
-                        >
-                          <option value="text">Chữ ngắn (text)</option>
-                          <option value="number">Số (number)</option>
-                          <option value="date">Ngày tháng (date)</option>
-                          <option value="textarea">Văn bản dài (textarea)</option>
-                        </select>
-                        <label className="flex items-center gap-1 text-[11px] text-slate-600 whitespace-nowrap cursor-pointer shrink-0">
-                          <input
-                            type="checkbox"
-                            checked={field.required}
-                            onChange={(e) => handleUpdateCustomField(field.id, 'required', e.target.checked)}
-                            className="rounded border-slate-300 text-[#2563EB] focus:ring-0"
-                          />
-                          <span>Bắt buộc</span>
-                        </label>
-                        <button
-                          type="button"
-                          onClick={() => handleRemoveCustomField(field.id)}
-                          className="p-1 text-slate-400 hover:text-red-500 transition-colors shrink-0"
-                          title="Xóa trường này"
-                        >
-                          <X className="h-4 w-4" />
-                        </button>
-                      </div>
+                        <Check className="h-3 w-3 text-emerald-600" />
+                        {f.label}
+                      </span>
                     ))}
                   </div>
-                )}
+                </div>
+
+                {/* 3.2. Các ô trống còn lại cho sinh viên tự điền */}
+                <div className="space-y-2.5">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider">
+                        Các ô trống còn lại cho sinh viên tự điền ({parsedFields.length} trường):
+                      </label>
+                      <p className="text-[11px] text-slate-500">
+                        Các câu hỏi hoặc ô trống đặc thù từ file Word. Sinh viên sẽ điền trực tiếp khi làm đơn.
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={handleAddCustomField}
+                      className="flex items-center gap-1 rounded-xl border border-blue-200 bg-blue-50 px-2.5 py-1 text-xs font-semibold text-[#2563EB] hover:bg-blue-100 transition-colors shadow-2xs"
+                    >
+                      <Plus className="h-3.5 w-3.5" />
+                      <span>Thêm trường</span>
+                    </button>
+                  </div>
+
+                  {parsedFields.length === 0 ? (
+                    <div className="rounded-xl border border-dashed border-slate-200 bg-slate-50/60 p-4 text-center text-xs text-slate-500">
+                      Chưa có ô trống riêng nào. Khi bạn chọn file Word (.docx), hệ thống sẽ tự động quét các ô trống còn lại (Môn học, Mã HP, Điểm, Lý do...) và tạo form tại đây.
+                    </div>
+                  ) : (
+                    <div className="space-y-2 max-h-56 overflow-y-auto pr-1">
+                      {parsedFields.map((field, idx) => (
+                        <div
+                          key={field.id}
+                          className="flex flex-wrap sm:flex-nowrap items-center gap-2 rounded-xl border border-slate-200 bg-slate-50/70 p-2.5 hover:border-blue-200 transition-colors"
+                        >
+                          <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-slate-200 text-[10px] font-bold text-slate-600">
+                            {idx + 1}
+                          </span>
+                          <div className="flex-1 min-w-[140px]">
+                            <input
+                              type="text"
+                              value={field.label}
+                              onChange={(e) => handleUpdateCustomField(field.id, 'label', e.target.value)}
+                              placeholder="Tên câu hỏi / trường nhập..."
+                              className="w-full rounded-lg border border-slate-300 bg-white px-2 py-1 text-xs text-slate-800 focus:border-[#2563EB] focus:outline-none"
+                            />
+                          </div>
+                          <select
+                            value={field.type}
+                            onChange={(e) => handleUpdateCustomField(field.id, 'type', e.target.value)}
+                            className="rounded-lg border border-slate-300 bg-white px-2 py-1 text-xs text-slate-700 focus:border-[#2563EB] focus:outline-none shrink-0"
+                          >
+                            <option value="text">Chữ ngắn (text)</option>
+                            <option value="number">Số (number)</option>
+                            <option value="date">Ngày tháng (date)</option>
+                            <option value="textarea">Văn bản dài (textarea)</option>
+                          </select>
+                          <label className="flex items-center gap-1 text-[11px] text-slate-600 whitespace-nowrap cursor-pointer shrink-0">
+                            <input
+                              type="checkbox"
+                              checked={field.required}
+                              onChange={(e) => handleUpdateCustomField(field.id, 'required', e.target.checked)}
+                              className="rounded border-slate-300 text-[#2563EB] focus:ring-0"
+                            />
+                            <span>Bắt buộc</span>
+                          </label>
+                          <button
+                            type="button"
+                            onClick={() => handleRemoveCustomField(field.id)}
+                            className="p-1 text-slate-400 hover:text-red-500 transition-colors shrink-0"
+                            title="Xóa trường này"
+                          >
+                            <X className="h-4 w-4" />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
               </div>
 
               {/* Nút hành động */}
@@ -2222,6 +2272,7 @@ export default function AdminDashboardPage({ user, logoSrc = DEFAULT_LOGO_SRC, o
                     stopCamera();
                     setIsAddTypeModalOpen(false);
                     setParsedFields([]);
+                    setParsedCmsFields([]);
                     setDocxParseSummary('');
                   }}
                   className="rounded-xl border border-slate-200 px-4 py-2 text-xs font-medium text-slate-600 hover:bg-slate-50"

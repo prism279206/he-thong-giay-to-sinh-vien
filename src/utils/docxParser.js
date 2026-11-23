@@ -139,6 +139,101 @@ export function slugifyTitle(str) {
 }
 
 /**
+ * Chuẩn hóa chuỗi tiếng Việt thành chuỗi không dấu phục vụ so khớp nhãn
+ */
+export function normalizeVietnameseText(str) {
+  return (str || '')
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/đ/g, 'd')
+    .replace(/Đ/g, 'D')
+    .trim();
+}
+
+/**
+ * Kiểm tra xem một nhãn có phải là thông tin sinh viên có sẵn trong CMS không.
+ * Nếu khớp, trả về object chứa { key, label, cmsKey } để tự động điền từ API CMS.
+ */
+export function identifyCmsField(rawLabel) {
+  const norm = normalizeVietnameseText(rawLabel);
+
+  if (/^(ho va ten|ho ten|ten em la|ten sinh vien|ho va ten sinh vien)\b/.test(norm)) {
+    return { key: 'fullName', label: 'Họ và tên', cmsKey: 'hoTen' };
+  }
+  if (
+    /^(ma sinh vien|ma so sinh vien|mssv|ma sv|ms sv|so the sinh vien)\b/.test(norm) ||
+    norm.includes('mssv')
+  ) {
+    return { key: 'studentCode', label: 'Mã số sinh viên (MSSV)', cmsKey: 'maSinhVien' };
+  }
+  if (/^(ngay sinh|sinh ngay|nam sinh)\b/.test(norm)) {
+    return { key: 'dob', label: 'Ngày sinh', cmsKey: 'ngaySinh' };
+  }
+  if (/^(noi sinh|que quan|noi cu tru|ho khau|ho khau thuong tru|dia chi thuong tru)\b/.test(norm)) {
+    return { key: 'pob', label: 'Nơi sinh / Quê quán', cmsKey: 'noiSinh' };
+  }
+  if (/(cccd|cmnd|can cuoc|dinh danh)/.test(norm)) {
+    if (/ngay cap/.test(norm))
+      return { key: 'idCardDate', label: 'Ngày cấp CCCD', cmsKey: 'ngayCapCccd' };
+    if (/noi cap/.test(norm))
+      return { key: 'idCardPlace', label: 'Nơi cấp CCCD', cmsKey: 'noiCapCccd' };
+    return { key: 'idCardNumber', label: 'Số CCCD / Định danh', cmsKey: 'cccd' };
+  }
+  if (
+    /^(lop|sinh vien lop|lop hoc|lop chuyen nganh)\b/.test(norm) &&
+    !/hoc phan|mon hoc/.test(norm)
+  ) {
+    return { key: 'className', label: 'Lớp học', cmsKey: 'lop' };
+  }
+  if (/^(khoa|thuoc khoa)\b/.test(norm) && !/khoa hoc|nien khoa/.test(norm)) {
+    return { key: 'faculty', label: 'Khoa đào tạo', cmsKey: 'khoa' };
+  }
+  if (/^(chuyen nganh|nganh|nganh hoc|nganh dao tao)\b/.test(norm)) {
+    return { key: 'major', label: 'Chuyên ngành đào tạo', cmsKey: 'nganh' };
+  }
+  if (
+    /^(so dien thoai|sdt|dien thoai|sdt lien he|dien thoai lien lac|so dt)\b/.test(norm) ||
+    norm.includes('sdt') ||
+    norm.includes('dien thoai')
+  ) {
+    return { key: 'phone', label: 'Số điện thoại liên hệ', cmsKey: 'sdt' };
+  }
+  if (/^(khoa hoc|nien khoa)\b/.test(norm) || (/^khoa\b/.test(norm) && /k\d+|\d{4}/.test(norm))) {
+    return { key: 'cohort', label: 'Khóa học', cmsKey: 'khoaHoc' };
+  }
+  if (/^(he dao tao|hinh thuc dao tao|bac dao tao)\b/.test(norm)) {
+    return { key: 'trainingSystem', label: 'Hệ đào tạo', cmsKey: 'trainingSystem' };
+  }
+  if (/^(co so|dia diem hoc tap|co so dao tao)\b/.test(norm)) {
+    return { key: 'campus', label: 'Cơ sở học tập', cmsKey: 'campus' };
+  }
+
+  return null;
+}
+
+/**
+ * Kiểm tra các câu dẫn chuyển tiếp hoặc phần chân trang không phải là trường form
+ */
+function isBoilerplateLine(raw) {
+  const norm = normalizeVietnameseText(raw);
+  return (
+    norm.startsWith('cong hoa xa hoi') ||
+    norm.startsWith('doc lap') ||
+    norm.startsWith('kinh gui') ||
+    norm.startsWith('em xin cam doan') ||
+    norm.startsWith('kinh mong') ||
+    norm.startsWith('nay em lam don') ||
+    norm.startsWith('em lam don nay') ||
+    norm.startsWith('nguoi lam don') ||
+    norm.startsWith('xac nhan cua') ||
+    norm.startsWith('chu ky') ||
+    norm.startsWith('ha noi') ||
+    /^(ngay\s+thang\s+nam|\.{3,}|_{3,})$/.test(norm)
+  );
+}
+
+/**
  * Nhận diện loại dữ liệu phù hợp cho trường input từ nhãn câu hỏi
  */
 function inferFieldType(label) {
@@ -229,16 +324,11 @@ export function analyzeDocumentStructure(rawText, defaultFileName = '') {
     detectedCategory = 'Đời sống sinh viên';
   }
 
-  // 4. Danh sách nhãn CMS cá nhân (Hệ thống tự động điền sẵn từ CIS/CMS, không bắt sinh viên nhập lại)
-  const cmsIgnoreRegex =
-    /^(họ và tên|tên em là|họ tên|họ và tên sinh viên|mssv|mã số sinh viên|mã sinh viên|mã sv|ngày sinh|nơi sinh|sinh ngày|số cccd|cmnd|cccd|ngày cấp|nơi cấp|lớp|sinh viên lớp|khoa|chuyên ngành|ngành|số điện thoại|sđt|điện thoại|khóa|khóa học|niên khóa|hệ đào tạo|cơ sở|cơ sở học tập)$/i;
-
-  const headerFooterIgnore =
-    /^(cộng hòa xã hội chủ nghĩa việt nam|độc lập – tự do – hạnh phúc|độc lập - tự do - hạnh phúc|kính gửi|em tên là|em xin cam đoan|người làm đơn|xác nhận của|chữ ký|hà nội|ngày\s+tháng\s+năm)$/i;
-
-  // 5. Bóc tách các trường câu hỏi riêng biệt của biểu mẫu
+  // 4. Bóc tách các trường: Phân loại rạch ròi giữa CMS Fields (tự điền từ API) và Custom Fields (chừa ô trống)
+  const detectedCmsFields = [];
   const customFields = [];
-  const seenLabels = new Set();
+  const seenCmsKeys = new Set();
+  const seenCustomLabels = new Set();
 
   for (const line of lines) {
     // Tìm các cụm có dạng: "Tên nhãn: ........" hoặc "Tên nhãn: ________" hoặc "Tên nhãn: [khoảng trống]"
@@ -251,11 +341,28 @@ export function analyzeDocumentStructure(rawText, defaultFileName = '') {
     for (const match of matches) {
       let rawLabel = match[1].trim().replace(/^[-*•\s\d.)]+/, '').trim();
       if (rawLabel.length < 2 || rawLabel.length > 60) continue;
+      if (isBoilerplateLine(rawLabel)) continue;
 
-      const norm = rawLabel.toLowerCase();
-      if (cmsIgnoreRegex.test(norm) || headerFooterIgnore.test(norm)) continue;
-      if (seenLabels.has(norm)) continue;
-      seenLabels.add(norm);
+      // 4.1. Kiểm tra xem có phải thông tin sinh viên từ CMS không
+      const cmsMatch = identifyCmsField(rawLabel);
+      if (cmsMatch) {
+        if (!seenCmsKeys.has(cmsMatch.key)) {
+          seenCmsKeys.add(cmsMatch.key);
+          detectedCmsFields.push({
+            key: cmsMatch.key,
+            label: cmsMatch.label,
+            cmsKey: cmsMatch.cmsKey,
+            originalText: rawLabel,
+          });
+        }
+        // Trường này đã có trong CMS -> TỰ ĐỘNG ĐIỀN, KHÔNG đưa vào danh sách bắt sinh viên gõ lại
+        continue;
+      }
+
+      // 4.2. Các ô trống còn lại -> Đưa vào danh sách Custom Fields cho sinh viên tự điền
+      const normLabel = normalizeVietnameseText(rawLabel);
+      if (seenCustomLabels.has(normLabel)) continue;
+      seenCustomLabels.add(normLabel);
 
       const fieldType = inferFieldType(rawLabel);
       const fieldId = `field_${customFields.length + 1}_${Math.random().toString(36).slice(2, 6)}`;
@@ -274,13 +381,13 @@ export function analyzeDocumentStructure(rawText, defaultFileName = '') {
     }
   }
 
-  // 6. Nếu là văn bản dài không có dấu chấm lửng (vd form khảo thí hoặc đề nghị),
-  // quét thêm các từ khóa câu hỏi như "Lý do", "Nội dung đề nghị"
+  // 5. Nếu chưa có trường câu hỏi nào, quét thêm các từ khóa câu hỏi dài như "Lý do", "Nội dung đề nghị"
   if (customFields.length === 0) {
     for (const line of lines) {
       if (/^(lý do|nội dung|đề nghị|nguyện vọng)\b/i.test(line)) {
         const cleanLabel = line.split(/[:：]/)[0].trim();
-        if (!seenLabels.has(cleanLabel.toLowerCase())) {
+        const normClean = normalizeVietnameseText(cleanLabel);
+        if (!seenCustomLabels.has(normClean)) {
           customFields.push({
             id: `field_1_${Math.random().toString(36).slice(2, 6)}`,
             label: cleanLabel.charAt(0).toUpperCase() + cleanLabel.slice(1),
@@ -288,11 +395,22 @@ export function analyzeDocumentStructure(rawText, defaultFileName = '') {
             required: true,
             placeholder: `Nhập chi tiết ${cleanLabel.toLowerCase()}...`,
           });
-          seenLabels.add(cleanLabel.toLowerCase());
+          seenCustomLabels.add(normClean);
           break;
         }
       }
     }
+  }
+
+  // Nếu trong file không đề cập trực tiếp CMS fields, mặc định hệ thống vẫn liên kết bộ trường chuẩn
+  if (detectedCmsFields.length === 0) {
+    detectedCmsFields.push(
+      { key: 'fullName', label: 'Họ và tên', cmsKey: 'hoTen' },
+      { key: 'studentCode', label: 'Mã số sinh viên', cmsKey: 'maSinhVien' },
+      { key: 'dob', label: 'Ngày sinh', cmsKey: 'ngaySinh' },
+      { key: 'className', label: 'Lớp học', cmsKey: 'lop' },
+      { key: 'major', label: 'Chuyên ngành', cmsKey: 'nganh' }
+    );
   }
 
   return {
@@ -300,9 +418,10 @@ export function analyzeDocumentStructure(rawText, defaultFileName = '') {
     suggestedCode: slugifyTitle(detectedTitle),
     department: detectedDepartment,
     category: detectedCategory,
+    cmsFields: detectedCmsFields,
     customFields,
     rawText,
-    summary: `Đã tự động nhận diện tiêu đề "${detectedTitle || 'Đơn mới'}" và bóc tách ${customFields.length} trường nhập liệu đặc thù.`,
+    summary: `Đã tự động liên kết ${detectedCmsFields.length} mục thông tin với API CMS (Họ tên, MSSV, Lớp...) và bóc tách ${customFields.length} ô trống cho sinh viên tự điền.`,
   };
 }
 

@@ -456,10 +456,10 @@ function StudentConfirmationForm({ onBack, user, requestType }) {
             className="space-y-5 rounded-2xl border border-slate-200/80 bg-white p-5 shadow-xs"
           >
             {/* Banner gợi ý */}
-            <div className="flex items-start gap-2.5 rounded-xl border border-blue-100 bg-blue-50/60 p-3 text-xs text-blue-800">
-              <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-[#2563EB]" />
+            <div className="flex items-start gap-2.5 rounded-xl border border-emerald-200 bg-emerald-50/70 p-3 text-xs text-emerald-900">
+              <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600" />
               <span>
-                Dữ liệu tự động điền từ CMS. Trường hợp có sai lệch, bạn hãy trực tiếp sửa lại từng mục bên dưới trước khi nộp.
+                Thông tin cá nhân (Họ tên, MSSV, Lớp, Ngành...) đã được tự động lấy từ API CMS trường. Bạn chỉ cần điền tiếp các ô trống nội dung ở mục 3 bên dưới.
               </span>
             </div>
 
