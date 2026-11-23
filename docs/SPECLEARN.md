@@ -17,6 +17,7 @@
 | Tên miền email chứa chuỗi con 'gv' làm sai role | Chuỗi `caodangvietmyhanoi.edu.vn` chứa 'gv' (`caodan[gv]ietmy...`), `targetEmail.includes('gv')` nhận diện nhầm tất cả SV thành GV | Chỉ kiểm tra phần username trước ký tự `@` (`usernamePrefix.startsWith('gv')` hoặc `startsWith('ql')`) |
 | Mã đăng nhập QL001 bị nhận diện thành sinh viên | Hàm phân tích `parseLoginIdentifier` kiểm tra `@`, nếu không có `@` mặc định gán `student_code` | Thêm điều kiện kiểm tra tiền tố `ql` hoặc `admin` trước khi mặc định là sinh viên |
 | GV ký xong trả thẳng cho SV sai nghiệp vụ | Giảng viên chỉ phê duyệt chuyên môn, thẩm quyền đóng dấu và ban hành thuộc Bộ phận Một cửa | Thiết lập trạng thái trung gian `teacher_approved`, chuyển hồ sơ về Một cửa kiểm tra, ký đóng dấu và gửi thông báo địa điểm nhận kết quả cho SV |
+| Đơn bóc tách bị thừa trường 'Em tên là' và mục 'Nội dung chi tiết của đơn' | Biến thể nhãn 'Em tên là' chưa khớp regex fullName, và parser tự động ép 'Lý do' vào customFields; bản in A4 tự chèn tiêu đề gạch chân | Nhận diện 'Em tên là', 'Giới tính', 'Nơi cấp' vào CMS; ánh xạ lý do vào trường reason chuẩn; gỡ bỏ tiêu đề 'Nội dung chi tiết của đơn' trên bản in A4 để giữ nguyên vẹn 100% bản gốc |
 
 ## Điều cần nhớ
 - (ghi dần)
