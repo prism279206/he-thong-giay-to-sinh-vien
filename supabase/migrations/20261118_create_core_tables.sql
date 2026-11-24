@@ -29,8 +29,7 @@ create table if not exists public.profiles (
 -- 2. BẢNG REQUEST_TYPES (Danh mục loại đơn / thủ tục)
 create table if not exists public.request_types (
   id uuid default gen_random_uuid() primary key,
-  ma_loai_don text unique not null,
-  ten_loai_don text not null,
+  ten_loai_don text unique not null,
   danh_muc text default 'Học vụ & Đào tạo',
   mo_ta text,
   thoi_han_ngay int default 3,

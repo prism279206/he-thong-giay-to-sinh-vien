@@ -266,7 +266,7 @@ function TeacherDashboardPage({ user, logoSrc = DEFAULT_LOGO_SRC, onLogout }) {
   }, [requestsList]);
 
   // Tên giáo viên và avatar
-  const teacherName = user?.fullName || 'Nguyễn Thị Mai';
+  const teacherName = user?.fullName || 'Đỗ Thị Hương';
   const teacherInitial = 'GV';
 
   // Lọc danh sách theo từ khóa và các tiêu chí dropdown

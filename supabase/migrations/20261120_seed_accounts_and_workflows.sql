@@ -16,6 +16,11 @@ alter table public.requests drop constraint if exists requests_trang_thai_check;
 alter table public.requests add constraint requests_trang_thai_check
   check (trang_thai in ('pending', 'in_progress', 'teacher_approved', 'completed', 'rejected', 'overdue'));
 
+-- Xóa bỏ hoàn toàn cột mã loại đơn (ma_loai_don), chỉ quản lý duy nhất theo tên loại đơn
+alter table public.request_types drop column if exists ma_loai_don cascade;
+alter table public.request_types drop constraint if exists request_types_ten_loai_don_key;
+alter table public.request_types add constraint request_types_ten_loai_don_key unique (ten_loai_don);
+
 -- 2. Hàm hỗ trợ tạo / cập nhật tài khoản an toàn vào auth.users và public.profiles
 create or replace function public.upsert_user_account(
   p_id uuid,
@@ -126,17 +131,17 @@ $$ language plpgsql security definer;
 -- 3. TẠO TÀI KHOẢN VÀ MẬT KHẨU (Mật khẩu mặc định: 123456)
 -- ========================================================
 
--- 3.1. Cán bộ Quản trị - Tiếp nhận & Phân phối Một Cửa (Admin)
+-- 3.1. Quản trị viên (Admin)
 -- Đăng nhập bằng mã: admincdvmhn hoặc email: admin@caodangvietmyhanoi.edu.vn | Mật khẩu: 123456
 select public.upsert_user_account(
   'a0000000-0000-0000-0000-000000000001'::uuid,
   'admin@caodangvietmyhanoi.edu.vn',
   '123456',
   'admincdvmhn',
-  'Cán bộ Quản trị Một Cửa',
+  'Quản trị viên',
   'admin',
   'Phòng Đào tạo & Quản lý Khoa học',
-  'Ban Tiếp nhận Một Cửa'
+  'Ban Tiếp nhận'
 );
 
 -- 3.2. Giảng viên chủ nhiệm GVCN (Staff)
@@ -153,13 +158,13 @@ select public.upsert_user_account(
 );
 
 -- 3.3. Giảng viên khoa GV002 (Staff)
--- Đăng nhập bằng mã: GV002 hoặc email: huong.do1@caodangvietmy.edu.vn | Mật khẩu: 123456
+-- Đăng nhập bằng mã: GV002 hoặc email: huong.do1@caodangvietmyhanoi.edu.vn | Mật khẩu: 123456
 select public.upsert_user_account(
   'b0000000-0000-0000-0000-000000000002'::uuid,
-  'huong.do1@caodangvietmy.edu.vn',
+  'huong.do1@caodangvietmyhanoi.edu.vn',
   '123456',
   'GV002',
-  'ThS. Đỗ Thị Hường',
+  'Đỗ Thị Hương',
   'staff',
   'Khoa Quản trị & Kinh tế số',
   'QTKD-K24'
@@ -182,11 +187,10 @@ select public.upsert_user_account(
 -- 4. KHỞI TẠO DANH MỤC 8 LOẠI ĐƠN HÀNH CHÍNH (request_types)
 -- ========================================================
 
-insert into public.request_types (id, ma_loai_don, ten_loai_don, danh_muc, mo_ta, thoi_han_ngay, dang_hoat_dong)
+insert into public.request_types (id, ten_loai_don, danh_muc, mo_ta, thoi_han_ngay, dang_hoat_dong)
 values
   (
     'd0000000-0000-0000-0000-000000000001'::uuid,
-    'XAC_NHAN_SV',
     'Đơn xin cấp xác nhận học sinh - sinh viên',
     'Xác nhận học tập',
     'Dùng để xác nhận đang theo học tại trường để vay vốn ngân hàng, tạm hoãn nghĩa vụ quân sự, bổ sung hồ sơ xin việc...',
@@ -195,7 +199,6 @@ values
   ),
   (
     'd0000000-0000-0000-0000-000000000002'::uuid,
-    'CAP_BANG_DIEM',
     'Đơn xin cấp bảng điểm',
     'Học vụ & Đào tạo',
     'Đề nghị cấp bảng điểm quá trình học tập các học kỳ hoặc bảng điểm tốt nghiệp có xác nhận của nhà trường.',
@@ -204,7 +207,6 @@ values
   ),
   (
     'd0000000-0000-0000-0000-000000000003'::uuid,
-    'MIEN_GIAM_HOC_PHI',
     'Đơn xin miễn giảm học phí',
     'Học phí & Tài chính',
     'Dành cho sinh viên thuộc diện chính sách, con thương binh liệt sĩ, hộ nghèo hoặc các đối tượng được hỗ trợ theo quy định.',
@@ -213,7 +215,6 @@ values
   ),
   (
     'd0000000-0000-0000-0000-000000000004'::uuid,
-    'BAO_LUU',
     'Đơn xin bảo lưu kết quả học tập',
     'Học vụ & Đào tạo',
     'Đề nghị tạm dừng tiến độ học và bảo lưu kết quả học tập tối đa 02 học kỳ vì lý do sức khỏe hoặc gia đình.',
@@ -222,7 +223,6 @@ values
   ),
   (
     'd0000000-0000-0000-0000-000000000005'::uuid,
-    'PHUC_KHAO',
     'Đơn xin phúc khảo bài thi',
     'Khảo thí & Điểm',
     'Đề nghị rút bài thi và thành lập ban chấm phúc khảo điểm bài thi kết thúc học phần trong thời hạn 15 ngày.',
@@ -231,7 +231,6 @@ values
   ),
   (
     'd0000000-0000-0000-0000-000000000006'::uuid,
-    'HOAN_THI',
     'Đơn xin tạm hoãn thi kết thúc học phần',
     'Khảo thí & Điểm',
     'Đề nghị hoãn thi kết thúc môn vì lý do ốm đau cấp cứu hoặc trường hợp bất khả kháng, có giấy viện kèm theo.',
@@ -240,24 +239,21 @@ values
   ),
   (
     'd0000000-0000-0000-0000-000000000007'::uuid,
-    'DANG_KY_KTX',
     'Đơn đăng ký chỗ ở Ký túc xá',
-    'Đời sống sinh viên',
+    'Công tác sinh viên',
     'Đăng ký phòng ở nội trú tại khu ký túc xá sinh viên dành cho tân sinh viên hoặc sinh viên ở xa.',
     2,
     true
   ),
   (
     'd0000000-0000-0000-0000-000000000008'::uuid,
-    'VE_THANG_XE_BUYT',
     'Đăng ký xác nhận làm vé tháng xe buýt',
-    'Đời sống sinh viên',
+    'Công tác sinh viên',
     'Đóng dấu xác nhận sinh viên trên bản khai đăng ký vé tháng xe buýt liên tuyến của Tổng công ty Vận tải.',
     1,
     true
   )
-on conflict (ma_loai_don) do update set
-  ten_loai_don = excluded.ten_loai_don,
+on conflict (ten_loai_don) do update set
   danh_muc = excluded.danh_muc,
   mo_ta = excluded.mo_ta,
   thoi_han_ngay = excluded.thoi_han_ngay,

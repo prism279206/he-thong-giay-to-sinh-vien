@@ -11,6 +11,7 @@ import {
   rejectRequestByAdmin as rejectMockRequest,
   signAndApproveByTeacher as signMockRequest,
   finalizeAndNotifyStudentByAdmin,
+  deleteStoredRequest,
 } from '../components/mockRequestsStore';
 
 /**
@@ -33,7 +34,7 @@ export async function submitRequest(payload) {
       const { data: rt } = await supabase
         .from('request_types')
         .select('id')
-        .or(`ma_loai_don.eq.${payload.typeCode || 'XAC_NHAN_SV'},ten_loai_don.eq.${payload.typeName}`)
+        .eq('ten_loai_don', payload.typeName || 'Đơn xin cấp xác nhận học sinh - sinh viên')
         .limit(1)
         .maybeSingle();
       if (rt?.id) {
@@ -59,19 +60,26 @@ export async function submitRequest(payload) {
     }
 
     // 4. Thử lưu vào Supabase
+    const insertPayload = {
+      id: payload.id,
+      ma_sinh_vien: payload.studentCode || '',
+      ho_ten_sinh_vien: payload.studentName || '',
+      lop: payload.className || '',
+      khoa: payload.faculty || '',
+      email_sinh_vien: payload.studentEmail || '',
+      request_type_id: requestTypeId,
+      current_step_id: currentStepId,
+      trang_thai: 'pending',
+      du_lieu_don: payload,
+      chu_ky_sinh_vien: payload.studentSignature || '',
+    };
+    if (studentAuthId) {
+      insertPayload.student_id = studentAuthId;
+    }
+
     const { data, error } = await supabase
       .from('requests')
-      .insert([
-        {
-          id: payload.id,
-          student_id: studentAuthId,
-          request_type_id: requestTypeId,
-          current_step_id: currentStepId,
-          trang_thai: 'pending',
-          du_lieu_don: payload,
-          chu_ky_sinh_vien: payload.studentSignature || '',
-        },
-      ])
+      .insert([insertPayload])
       .select()
       .maybeSingle();
 
@@ -84,6 +92,7 @@ export async function submitRequest(payload) {
       await supabase.from('request_step_logs').insert([
         {
           request_id: payload.id,
+          actor_name: payload.studentName || 'Sinh viên',
           hanh_dong: 'Nộp đơn trực tuyến',
           ghi_chu: 'Sinh viên đã hoàn tất ký điện tử và gửi đơn đến Quản trị viên.',
         },
@@ -101,13 +110,22 @@ export async function submitRequest(payload) {
 /**
  * Lấy danh sách đơn của một sinh viên
  */
-export async function listMyRequests(studentId) {
+export async function listMyRequests(studentIdOrCode) {
   try {
-    const { data, error } = await supabase
+    let query = supabase
       .from('requests')
       .select('*, request_types(ten_loai_don)')
-      .eq('student_id', studentId)
       .order('created_at', { ascending: false });
+
+    if (studentIdOrCode) {
+      if (/^[0-9a-f-]{36}$/i.test(studentIdOrCode)) {
+        query = query.or(`student_id.eq.${studentIdOrCode},ma_sinh_vien.eq.${studentIdOrCode}`);
+      } else {
+        query = query.eq('ma_sinh_vien', studentIdOrCode);
+      }
+    }
+
+    const { data, error } = await query;
 
     if (!error && data && data.length > 0) {
       return { data, error: null };
@@ -127,7 +145,7 @@ export async function listStaffRequests() {
   try {
     const { data, error } = await supabase
       .from('requests')
-      .select('*, request_types(ten_loai_don), profiles(ho_ten, ma_sinh_vien, lop)')
+      .select('*, request_types(ten_loai_don)')
       .order('created_at', { ascending: false });
 
     if (!error && data && data.length > 0) {
@@ -255,6 +273,31 @@ export async function rejectRequest(requestId, reason, actorName) {
 }
 
 /**
+ * Sinh viên hủy đơn: Lập tức xóa lá đơn khỏi database Supabase và kho lưu trữ
+ * @param {string} requestId Mã đơn cần xóa (ví dụ: #2026-0001)
+ */
+export async function cancelAndRemoveRequest(requestId) {
+  try {
+    const { error } = await supabase
+      .from('requests')
+      .delete()
+      .eq('id', requestId);
+
+    if (error) {
+      console.warn('Lỗi khi xóa đơn trên Supabase:', error.message);
+    } else {
+      console.log('Đã xóa thành công lá đơn khỏi Supabase:', requestId);
+    }
+  } catch (err) {
+    console.warn('Lỗi kết nối Supabase khi xóa đơn:', err.message);
+  }
+
+  // Đồng thời xóa khỏi kho lưu trữ giao diện để cập nhật ngay lập tức
+  deleteStoredRequest(requestId);
+  return { success: true };
+}
+
+/**
  * Thêm loại đơn mới lên Supabase (Admin)
  */
 export async function createRequestTypeOnSupabase(typeItem) {
@@ -263,7 +306,6 @@ export async function createRequestTypeOnSupabase(typeItem) {
       .from('request_types')
       .insert([
         {
-          ma_loai_don: typeItem.code,
           ten_loai_don: typeItem.name,
           danh_muc: typeItem.category,
           mo_ta: typeItem.description,
@@ -285,15 +327,20 @@ export async function createRequestTypeOnSupabase(typeItem) {
 }
 
 /**
- * Xóa loại đơn trên Supabase (Admin)
+ * Xóa loại đơn trên Supabase (Admin) theo ID hoặc Tên loại đơn
  */
-export async function deleteRequestTypeOnSupabase(typeCode) {
+export async function deleteRequestTypeOnSupabase(typeId, typeName) {
   try {
-    const { error } = await supabase
-      .from('request_types')
-      .delete()
-      .eq('ma_loai_don', typeCode);
+    let query = supabase.from('request_types').delete();
+    if (typeId && /^[0-9a-f-]{36}$/i.test(typeId)) {
+      query = query.eq('id', typeId);
+    } else if (typeName) {
+      query = query.eq('ten_loai_don', typeName);
+    } else {
+      query = query.eq('id', typeId);
+    }
 
+    const { error } = await query;
     if (error) {
       console.warn('Lỗi khi xóa request_type trên Supabase:', error.message);
     }
@@ -303,4 +350,40 @@ export async function deleteRequestTypeOnSupabase(typeCode) {
     return { error: err };
   }
 }
+
+/**
+ * Tự động dọn dẹp các hồ sơ đơn đã hoàn tất quá 3 tháng (90 ngày) để tối ưu dung lượng database
+ */
+export async function cleanupExpiredRequests() {
+  try {
+    const threeMonthsAgo = new Date();
+    threeMonthsAgo.setMonth(threeMonthsAgo.getMonth() - 3);
+
+    // 1. Thử gọi hàm RPC dọn dẹp trên Supabase
+    const { data: rpcCount, error: rpcErr } = await supabase.rpc('cleanup_expired_completed_requests');
+    if (!rpcErr && typeof rpcCount === 'number') {
+      if (rpcCount > 0) {
+        console.log(`[Database Cleanup] Đã dọn dẹp ${rpcCount} đơn hoàn tất quá 3 tháng trên Supabase.`);
+      }
+      return { deletedCount: rpcCount };
+    }
+
+    // 2. Dự phòng: Dọn dẹp trực tiếp qua REST API nếu RPC chưa nạp
+    const { data: deletedRows, error: delErr } = await supabase
+      .from('requests')
+      .delete()
+      .eq('trang_thai', 'completed')
+      .lt('closed_at', threeMonthsAgo.toISOString())
+      .select('id');
+
+    if (!delErr && deletedRows?.length > 0) {
+      console.log(`[Database Cleanup] Đã tự động xóa ${deletedRows.length} đơn hoàn tất quá 3 tháng khỏi database.`);
+    }
+    return { deletedCount: deletedRows?.length || 0 };
+  } catch (err) {
+    console.warn('[Database Cleanup] Lỗi khi dọn dẹp hồ sơ quá 3 tháng:', err.message);
+    return { deletedCount: 0, error: err };
+  }
+}
+
 

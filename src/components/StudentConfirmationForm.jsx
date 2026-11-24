@@ -15,7 +15,6 @@ import {
   Sparkles,
 } from 'lucide-react';
 import logoCdvm from '../assets/images/logocđvm.jpg';
-import { addStudentRequest } from './mockRequestsStore';
 import { submitRequest } from '../services/requestService';
 import { getStudentProfile, formatCccd } from '../services/cmsService';
 
@@ -185,6 +184,7 @@ function StudentConfirmationForm({ onBack, user, requestType }) {
   // Kiểm tra phân quyền: Chỉ tài khoản giáo viên/cán bộ mới có quyền thao tác ô GVCN
   const isTeacherOrStaff = user?.role === 'teacher' || user?.role === 'staff';
   const [teacherSignature, setTeacherSignature] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const handleChange = (field, value) => {
     setFormData((prev) => ({
@@ -278,8 +278,10 @@ function StudentConfirmationForm({ onBack, user, requestType }) {
     reader.readAsDataURL(file);
   };
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
+    if (isSubmitting) return;
+
     if (!formData.fullName.trim() || !formData.studentCode.trim()) {
       alert('Vui lòng không để trống Họ tên và Mã sinh viên.');
       return;
@@ -326,7 +328,6 @@ function StudentConfirmationForm({ onBack, user, requestType }) {
     const newRequestPayload = {
       id: newRequestId,
       typeId: requestType?.id || 'rt-confirm-student',
-      typeCode: requestType?.code || 'XAC_NHAN_SV',
       typeName: requestType?.name || 'Đơn xin cấp xác nhận học sinh – sinh viên',
       typeCategory: requestType?.category || 'Xác nhận học tập',
       departmentName: requestType?.departmentName || 'Phòng Đào tạo & Quản lý Khoa học',
@@ -366,13 +367,19 @@ function StudentConfirmationForm({ onBack, user, requestType }) {
       ],
     };
 
-    addStudentRequest(newRequestPayload);
-    submitRequest(newRequestPayload);
-
-    alert(
-      `Đã nộp ${requestType?.name || 'đơn'} thành công (Mã đơn: ${newRequestId})!\n\nDữ liệu đơn kèm chữ ký của bạn đã được chuyển tới Quản trị viên (Admin) để thẩm định và phân phối tới Giảng viên/Phòng ban.`
-    );
-    if (onBack) onBack();
+    setIsSubmitting(true);
+    try {
+      await submitRequest(newRequestPayload);
+      alert(
+        `Đã nộp ${requestType?.name || 'đơn'} thành công (Mã đơn: ${newRequestId})!\n\nDữ liệu đơn kèm chữ ký của bạn đã được chuyển tới Quản trị viên (Admin) để thẩm định và phân phối tới Giảng viên/Phòng ban.`
+      );
+      if (onBack) onBack();
+    } catch (err) {
+      console.error('Lỗi khi nộp đơn:', err);
+      alert('Có lỗi xảy ra khi gửi đơn: ' + (err.message || 'Vui lòng thử lại.'));
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -528,7 +535,7 @@ function StudentConfirmationForm({ onBack, user, requestType }) {
                 </div>
 
                 <div>
-                  <label className="block text-xs font-medium text-slate-600">Số CCCD (12 số)</label>
+                  <label className="block text-xs font-medium text-slate-600">Số CCCD</label>
                   <input
                     type="text"
                     value={formData.idCardNumber}
@@ -911,7 +918,7 @@ function StudentConfirmationForm({ onBack, user, requestType }) {
                     type="button"
                     onClick={() =>
                       setTeacherSignature((prev) =>
-                        prev ? '' : 'Đã ký số: GVCN. Nguyễn Thị Mai Anh'
+                        prev ? '' : 'Đã ký số: GVCN. Đỗ Thị Hương'
                       )
                     }
                     className="cursor-pointer rounded-lg bg-purple-600 px-3 py-1 text-xs font-semibold text-white hover:bg-purple-700"
@@ -926,10 +933,15 @@ function StudentConfirmationForm({ onBack, user, requestType }) {
             <div className="pt-2">
               <button
                 type="submit"
-                className="flex w-full cursor-pointer items-center justify-center gap-2 rounded-xl bg-[#2563EB] px-4 py-3 text-sm font-semibold text-white shadow-md shadow-blue-500/20 transition-all hover:bg-[#1D4ED8] active:scale-[0.99]"
+                disabled={isSubmitting}
+                className="flex w-full cursor-pointer items-center justify-center gap-2 rounded-xl bg-[#2563EB] px-4 py-3 text-sm font-semibold text-white shadow-md shadow-blue-500/20 transition-all hover:bg-[#1D4ED8] active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-70"
               >
-                <Send className="h-4 w-4" />
-                <span>Nộp {requestType?.name || 'đơn xác nhận HSSV'}</span>
+                {isSubmitting ? (
+                  <span className="h-4 w-4 animate-spin rounded-full border-2 border-white/30 border-t-white" />
+                ) : (
+                  <Send className="h-4 w-4" />
+                )}
+                <span>{isSubmitting ? 'Đang gửi hồ sơ...' : `Nộp ${requestType?.name || 'đơn xác nhận HSSV'}`}</span>
               </button>
             </div>
           </form>

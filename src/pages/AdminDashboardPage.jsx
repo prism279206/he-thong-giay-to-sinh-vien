@@ -39,7 +39,10 @@ import { parseDocxFile } from '../utils/docxParser';
 import {
   createRequestTypeOnSupabase,
   deleteRequestTypeOnSupabase,
+  finalizeAndNotifyStudentRequest,
+  cleanupExpiredRequests,
 } from '../services/requestService';
+import { listLecturersFromDatabase } from '../services/authService';
 import {
   getStoredRequests,
   saveStoredRequests,
@@ -73,23 +76,17 @@ function getActiveCohorts(date = new Date()) {
 
 const ACTIVE_COHORTS = getActiveCohorts();
 
-// Danh sách phòng ban chức năng tiếp nhận xử lý
+// Danh sách phòng ban chức năng tiếp nhận xử lý (4 đơn vị chuẩn của trường)
 export const DEPARTMENTS = [
-  { id: 'dao_tao', name: 'Phòng Đào tạo & Quản lý Khoa học', code: 'P.ĐT', officer: 'ThS. Lê Hoàng Long' },
-  { id: 'ctsv', name: 'Phòng Công tác Sinh viên', code: 'P.CTSV', officer: 'Cô Vũ Thị Lan' },
-  { id: 'tckt', name: 'Phòng Tài chính - Kế toán', code: 'P.TCKT', officer: 'ThS. Nguyễn Hồng Hải' },
-  { id: 'khao_thi', name: 'Trung tâm Khảo thí & Đảm bảo chất lượng', code: 'TT.KT', officer: 'ThS. Đặng Quốc Bảo' },
-  { id: 'ktx', name: 'Ban Quản lý Ký túc xá', code: 'BQL.KTX', officer: 'Thầy Hoàng Văn Đức' },
-  { id: 'doan_thanh_nien', name: 'Văn phòng Đoàn Thanh niên - Hội Sinh viên', code: 'VP.Đoàn', officer: 'Đ/c Phạm Thu Trang' },
+  { id: 'dao_tao', name: 'Phòng Đào tạo', code: 'P.ĐT', officer: 'Cán bộ Phòng Đào tạo' },
+  { id: 'ctsv', name: 'Phòng Công tác sinh viên', code: 'P.CTSV', officer: 'Cán bộ Phòng Công tác sinh viên' },
+  { id: 'khao_thi', name: 'Phòng Khảo thí', code: 'P.KT', officer: 'Cán bộ Phòng Khảo thí' },
+  { id: 'gvcn', name: 'Giảng viên - GVCN', code: 'GVCN', officer: 'Giảng viên phụ trách' },
 ];
 
-// Danh sách giảng viên tiếp nhận
+// Danh sách giảng viên mặc định (sẽ được cập nhật động từ bảng profiles database)
 export const LECTURERS = [
-  { id: 'GV001', name: 'ThS. Nguyễn Thị Mai', code: 'GV001', faculty: 'Khoa Công nghệ thông tin', role: 'GVCN CD-CNTT-K25A' },
-  { id: 'GV002', name: 'TS. Trần Văn Bình', code: 'GV002', faculty: 'Khoa Công nghệ thông tin', role: 'Trưởng bộ môn PM' },
-  { id: 'GV003', name: 'ThS. Lê Thị Ánh Tuyết', code: 'GV003', faculty: 'Khoa Kinh tế - Quản trị', role: 'GVCN CD-QTKD-K25A' },
-  { id: 'GV004', name: 'ThS. Phạm Hoàng Nam', code: 'GV004', faculty: 'Khoa Thiết kế mỹ thuật', role: 'GVCN CD-TKDH-K26A' },
-  { id: 'GV005', name: 'ThS. Đỗ Thúy Hằng', code: 'GV005', faculty: 'Khoa Ngoại ngữ', role: 'GVCN CD-TA-K24A' },
+  { id: 'GV002', name: 'Đỗ Thị Hương', code: 'GV002', faculty: 'Giảng viên - GVCN', role: 'Giảng viên - GVCN' },
 ];
 
 // Bộ lọc dữ liệu đồng bộ
@@ -325,6 +322,17 @@ export default function AdminDashboardPage({ user, logoSrc = DEFAULT_LOGO_SRC, o
   const [requestsList, setRequestsList] = useState(() => getStoredRequests());
   const [actionSuccessMsg, setActionSuccessMsg] = useState('');
 
+  // Danh sách giảng viên tải động từ database profiles
+  const [lecturersList, setLecturersList] = useState(LECTURERS);
+
+  useEffect(() => {
+    listLecturersFromDatabase().then((res) => {
+      if (res?.data && res.data.length > 0) {
+        setLecturersList(res.data);
+      }
+    });
+  }, []);
+
   // Quản lý thông báo gửi về cho Quản trị viên
   const [showAdminNotifications, setShowAdminNotifications] = useState(false);
   const [adminNotifications, setAdminNotifications] = useState(() =>
@@ -338,6 +346,9 @@ export default function AdminDashboardPage({ user, logoSrc = DEFAULT_LOGO_SRC, o
   }, [activeTab]);
 
   useEffect(() => {
+    // Tự động dọn dẹp các hồ sơ đã hoàn tất quá 3 tháng trên Supabase để database luôn nhẹ
+    cleanupExpiredRequests();
+
     const syncData = () => {
       setRequestsList(getStoredRequests());
       setAdminNotifications(getStoredNotifications('admin'));
@@ -364,7 +375,6 @@ export default function AdminDashboardPage({ user, logoSrc = DEFAULT_LOGO_SRC, o
   // Modal thêm loại đơn mới bằng Chụp ảnh / Tải file
   const [isAddTypeModalOpen, setIsAddTypeModalOpen] = useState(false);
   const [newTypeName, setNewTypeName] = useState('');
-  const [newTypeCode, setNewTypeCode] = useState('');
   const [newTypeCategory, setNewTypeCategory] = useState('Học vụ & Đào tạo');
   const [newTypeDepartment, setNewTypeDepartment] = useState('Phòng Đào tạo & Quản lý Khoa học');
   const [newTypeSla, setNewTypeSla] = useState('3');
@@ -490,7 +500,6 @@ export default function AdminDashboardPage({ user, logoSrc = DEFAULT_LOGO_SRC, o
         const q = typeSearchTerm.trim().toLowerCase();
         const match =
           type.name.toLowerCase().includes(q) ||
-          type.code.toLowerCase().includes(q) ||
           type.description.toLowerCase().includes(q) ||
           type.departmentName.toLowerCase().includes(q);
         if (!match) return false;
@@ -516,23 +525,9 @@ export default function AdminDashboardPage({ user, logoSrc = DEFAULT_LOGO_SRC, o
     setMobileMenuOpen(false);
   };
 
-  // Tự sinh mã loại đơn từ tên tiếng Việt
+  // Xử lý đổi tên loại đơn
   const handleNameChange = (name) => {
     setNewTypeName(name);
-    // Tự sinh mã gợi ý (ví dụ: "Đơn xin rút học phần" -> "RUT_HOC_PHAN")
-    const cleanStr = name
-      .normalize('NFD')
-      .replace(/[\u0300-\u036f]/g, '')
-      .replace(/đ/g, 'd')
-      .replace(/Đ/g, 'D')
-      .replace(/^don xin /i, '')
-      .replace(/^don /i, '')
-      .trim()
-      .toUpperCase()
-      .replace(/[^A-Z0-9]+/g, '_');
-    if (cleanStr && cleanStr !== '_') {
-      setNewTypeCode(cleanStr);
-    }
   };
 
   // Xử lý khi chọn file tải lên (Word .docx, Ảnh hoặc PDF)
@@ -576,9 +571,6 @@ export default function AdminDashboardPage({ user, logoSrc = DEFAULT_LOGO_SRC, o
         if (res?.success) {
           if (res.title) {
             handleNameChange(res.title);
-          }
-          if (res.suggestedCode) {
-            setNewTypeCode(res.suggestedCode);
           }
           if (res.category) {
             setNewTypeCategory(res.category);
@@ -667,7 +659,6 @@ export default function AdminDashboardPage({ user, logoSrc = DEFAULT_LOGO_SRC, o
 
     const newTypeItem = {
       id: `rt-${Date.now()}`,
-      code: newTypeCode.trim() || `DON_${Date.now().toString().slice(-4)}`,
       name: newTypeName.trim(),
       category: newTypeCategory,
       departmentName: newTypeDepartment,
@@ -698,7 +689,6 @@ export default function AdminDashboardPage({ user, logoSrc = DEFAULT_LOGO_SRC, o
 
     // Reset form
     setNewTypeName('');
-    setNewTypeCode('');
     setNewTypeDescription('');
     setUploadedFile(null);
     setParsedFields([]);
@@ -724,7 +714,7 @@ export default function AdminDashboardPage({ user, logoSrc = DEFAULT_LOGO_SRC, o
     const updated = requestTypes.filter((t) => t.id !== typeToDelete.id);
     setRequestTypes(updated);
     saveStoredRequestTypes(updated);
-    deleteRequestTypeOnSupabase(typeToDelete.code);
+    deleteRequestTypeOnSupabase(typeToDelete.id, typeToDelete.name);
 
     if (viewingTemplate?.id === typeToDelete.id) {
       setViewingTemplate(null);
@@ -741,18 +731,18 @@ export default function AdminDashboardPage({ user, logoSrc = DEFAULT_LOGO_SRC, o
     setSelectedRequest(req);
     setDispatchUrgency(req.urgency || 'normal');
     setDispatchNote('');
-    if (req.typeCategory?.includes('Học vụ') || req.typeCategory?.includes('Khảo thí')) {
+    if (req.typeCategory?.includes('Khảo thí')) {
+      setDispatchType('department');
+      setTargetId('khao_thi');
+    } else if (req.typeCategory?.includes('Công tác sinh viên') || req.typeCategory?.includes('Ký túc xá') || req.typeCategory?.includes('xe buýt')) {
+      setDispatchType('department');
+      setTargetId('ctsv');
+    } else if (req.typeCategory?.includes('Học vụ') || req.typeCategory?.includes('Đào tạo') || req.typeCategory?.includes('Học phí')) {
       setDispatchType('department');
       setTargetId('dao_tao');
-    } else if (req.typeCategory?.includes('Học phí')) {
-      setDispatchType('department');
-      setTargetId('tckt');
-    } else if (req.typeCategory?.includes('Ký túc xá')) {
-      setDispatchType('department');
-      setTargetId('ktx');
     } else {
       setDispatchType('lecturer');
-      setTargetId(LECTURERS[0].id);
+      setTargetId(lecturersList[0]?.id || 'GV002');
     }
     setIsDispatchModalOpen(true);
   };
@@ -764,7 +754,7 @@ export default function AdminDashboardPage({ user, logoSrc = DEFAULT_LOGO_SRC, o
 
     let targetInfo = null;
     if (dispatchType === 'lecturer') {
-      const gv = LECTURERS.find((item) => item.id === targetId);
+      const gv = lecturersList.find((item) => item.id === targetId) || lecturersList[0];
       if (!gv) return;
       targetInfo = {
         type: 'lecturer',
@@ -778,7 +768,7 @@ export default function AdminDashboardPage({ user, logoSrc = DEFAULT_LOGO_SRC, o
         deadline: `Sau ${dispatchDeadline} ngày làm việc`,
       };
     } else {
-      const dept = DEPARTMENTS.find((item) => item.id === targetId);
+      const dept = DEPARTMENTS.find((item) => item.id === targetId) || DEPARTMENTS[0];
       if (!dept) return;
       targetInfo = {
         type: 'department',
@@ -906,6 +896,12 @@ export default function AdminDashboardPage({ user, logoSrc = DEFAULT_LOGO_SRC, o
       adminNote: adminFinalizeNote,
     });
     setRequestsList(updated);
+    finalizeAndNotifyStudentRequest(
+      selectedRequest.id,
+      user?.fullName || 'Quản trị viên',
+      pickupLocation,
+      adminFinalizeNote
+    );
     setIsFinalizeModalOpen(false);
     const updatedTarget = updated.find((r) => r.id === selectedRequest.id);
     setSelectedRequest(updatedTarget || null);
@@ -1674,7 +1670,7 @@ export default function AdminDashboardPage({ user, logoSrc = DEFAULT_LOGO_SRC, o
                   { id: 'Học vụ & Đào tạo', label: 'Học vụ & Đào tạo' },
                   { id: 'Khảo thí & Điểm', label: 'Khảo thí & Điểm' },
                   { id: 'Học phí & Tài chính', label: 'Học phí & Tài chính' },
-                  { id: 'Đời sống sinh viên', label: 'Đời sống sinh viên' },
+                  { id: 'Công tác sinh viên', label: 'Công tác sinh viên' },
                 ].map((cat) => (
                   <button
                     key={cat.id}
@@ -1701,10 +1697,7 @@ export default function AdminDashboardPage({ user, logoSrc = DEFAULT_LOGO_SRC, o
                       {/* Top card: Mã đơn, Badge danh mục và Switch bật/tắt */}
                       <div className="flex items-start justify-between gap-2 mb-3">
                         <div className="flex flex-wrap items-center gap-2">
-                          <span className="rounded-lg bg-blue-50 px-2 py-1 text-[11px] font-bold text-[#2563EB] tracking-wider uppercase">
-                            {type.code}
-                          </span>
-                          <span className="rounded-lg bg-slate-100 px-2 py-1 text-[11px] font-medium text-slate-600">
+                          <span className="rounded-lg bg-blue-50 px-2 py-1 text-[11px] font-semibold text-[#2563EB]">
                             {type.category}
                           </span>
                         </div>
@@ -1795,10 +1788,29 @@ export default function AdminDashboardPage({ user, logoSrc = DEFAULT_LOGO_SRC, o
           {/* TAB 4: LỊCH SỬ XỬ LÝ */}
           {activeTab === 'history' && (
             <section className="rounded-2xl border border-slate-200/70 bg-white p-5 shadow-xs sm:p-6">
-              <h1 className="text-xl font-bold text-slate-800 mb-2">Lịch sử điều phối toàn bộ hồ sơ</h1>
-              <p className="text-sm text-slate-500 mb-6">
-                Nhật ký lưu trữ toàn bộ các đơn từ sinh viên đã được tiếp nhận, phân luồng và xử lý hoàn tất.
-              </p>
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between mb-6">
+                <div>
+                  <h1 className="text-xl font-bold text-slate-800 mb-1">Lịch sử điều phối toàn bộ hồ sơ</h1>
+                  <p className="text-sm text-slate-500">
+                    Nhật ký lưu trữ hồ sơ đã hoàn tất. Đơn được tự động giải phóng khỏi database sau 3 tháng kể từ ngày nhận.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={async () => {
+                    const res = await cleanupExpiredRequests();
+                    alert(
+                      res?.deletedCount > 0
+                        ? `Đã dọn dẹp ${res.deletedCount} đơn quá hạn 3 tháng khỏi database!`
+                        : 'Database đã sạch sẽ, không có đơn nào hoàn tất quá 3 tháng.'
+                    );
+                  }}
+                  className="inline-flex cursor-pointer items-center gap-1.5 rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2 text-xs font-semibold text-slate-700 hover:bg-slate-100 transition-colors shrink-0"
+                >
+                  <RotateCcw className="h-3.5 w-3.5 text-slate-500" />
+                  <span>Dọn dẹp đơn cũ (&gt; 3 tháng)</span>
+                </button>
+              </div>
               <div className="overflow-x-auto">
                 <table className="w-full min-w-[700px] text-left text-sm">
                   <thead>
@@ -2069,19 +2081,6 @@ export default function AdminDashboardPage({ user, logoSrc = DEFAULT_LOGO_SRC, o
                 <div className="grid grid-cols-2 gap-3">
                   <div>
                     <label className="block text-xs font-semibold text-slate-700 mb-1">
-                      Mã thủ tục (Gợi ý):
-                    </label>
-                    <input
-                      type="text"
-                      value={newTypeCode}
-                      onChange={(e) => setNewTypeCode(e.target.value.toUpperCase())}
-                      placeholder="VD: CHUYEN_NGANH"
-                      className="w-full rounded-xl border border-slate-300 p-2.5 text-xs font-semibold text-[#2563EB] focus:border-[#2563EB] focus:outline-none"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-xs font-semibold text-slate-700 mb-1">
                       Danh mục:
                     </label>
                     <select
@@ -2093,25 +2092,7 @@ export default function AdminDashboardPage({ user, logoSrc = DEFAULT_LOGO_SRC, o
                       <option value="Học vụ & Đào tạo">Học vụ & Đào tạo</option>
                       <option value="Khảo thí & Điểm">Khảo thí & Điểm</option>
                       <option value="Học phí & Tài chính">Học phí & Tài chính</option>
-                      <option value="Đời sống sinh viên">Đời sống sinh viên</option>
-                    </select>
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-xs font-semibold text-slate-700 mb-1">
-                      Đơn vị phụ trách xử lý:
-                    </label>
-                    <select
-                      value={newTypeDepartment}
-                      onChange={(e) => setNewTypeDepartment(e.target.value)}
-                      className="w-full rounded-xl border border-slate-300 bg-white p-2.5 text-xs text-slate-800 focus:border-[#2563EB] focus:outline-none"
-                    >
-                      {DEPARTMENTS.map((dept) => (
-                        <option key={dept.id} value={dept.name}>{dept.name}</option>
-                      ))}
-                      <option value="Giảng viên chủ nhiệm">Giảng viên chủ nhiệm</option>
+                      <option value="Công tác sinh viên">Công tác sinh viên</option>
                     </select>
                   </div>
 
@@ -2131,6 +2112,21 @@ export default function AdminDashboardPage({ user, logoSrc = DEFAULT_LOGO_SRC, o
                       <option value="7">7 ngày làm việc</option>
                     </select>
                   </div>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-slate-700 mb-1">
+                    Đơn vị phụ trách xử lý:
+                  </label>
+                  <select
+                    value={newTypeDepartment}
+                    onChange={(e) => setNewTypeDepartment(e.target.value)}
+                    className="w-full rounded-xl border border-slate-300 bg-white p-2.5 text-xs text-slate-800 focus:border-[#2563EB] focus:outline-none"
+                  >
+                    {DEPARTMENTS.map((dept) => (
+                      <option key={dept.id} value={dept.name}>{dept.name}</option>
+                    ))}
+                  </select>
                 </div>
 
                 <div>
@@ -2309,7 +2305,7 @@ export default function AdminDashboardPage({ user, logoSrc = DEFAULT_LOGO_SRC, o
                 <div>
                   <h3 className="font-bold text-slate-800 text-base">{viewingTemplate.name}</h3>
                   <p className="text-xs text-slate-500">
-                    Mã: <span className="font-semibold text-blue-600">{viewingTemplate.code}</span> • Đơn vị: {viewingTemplate.departmentName}
+                    Đơn vị: <span className="font-semibold text-slate-700">{viewingTemplate.departmentName}</span> • Danh mục: {viewingTemplate.category}
                   </p>
                 </div>
               </div>
@@ -2363,7 +2359,7 @@ export default function AdminDashboardPage({ user, logoSrc = DEFAULT_LOGO_SRC, o
                 <div className="rounded-xl overflow-hidden border border-slate-200 bg-white shadow-sm p-4 sm:p-6">
                   <OfficialDocumentView
                     request={{
-                      id: viewingTemplate.code,
+                      id: viewingTemplate.id,
                       typeName: viewingTemplate.name,
                       typeCategory: viewingTemplate.category,
                       studentName: 'NGUYỄN VĂN TIẾN',
@@ -2469,7 +2465,7 @@ export default function AdminDashboardPage({ user, logoSrc = DEFAULT_LOGO_SRC, o
                     type="button"
                     onClick={() => {
                       setDispatchType('lecturer');
-                      setTargetId(LECTURERS[0].id);
+                      setTargetId(lecturersList[0]?.id || 'GV002');
                     }}
                     className={`flex items-center gap-2.5 rounded-xl border p-3 text-left transition-all ${dispatchType === 'lecturer'
                         ? 'border-[#2563EB] bg-blue-50/70 text-[#2563EB] ring-1 ring-[#2563EB]'
@@ -2497,7 +2493,7 @@ export default function AdminDashboardPage({ user, logoSrc = DEFAULT_LOGO_SRC, o
                     <Building2 className="h-5 w-5 shrink-0" />
                     <div>
                       <div className="font-bold text-xs sm:text-sm">Phòng ban Chức năng</div>
-                      <div className="text-[11px] text-slate-500">Đào tạo, CTSV, Kế toán...</div>
+                      <div className="text-[11px] text-slate-500">Đào tạo, CTSV, Khảo thí...</div>
                     </div>
                   </button>
                 </div>
@@ -2514,9 +2510,9 @@ export default function AdminDashboardPage({ user, logoSrc = DEFAULT_LOGO_SRC, o
                   required
                 >
                   {dispatchType === 'lecturer' ? (
-                    LECTURERS.map((gv) => (
+                    lecturersList.map((gv) => (
                       <option key={gv.id} value={gv.id}>
-                        {gv.name} — {gv.role} ({gv.faculty})
+                        {gv.name} ({gv.code}) — {gv.role}
                       </option>
                     ))
                   ) : (
@@ -2972,7 +2968,7 @@ export default function AdminDashboardPage({ user, logoSrc = DEFAULT_LOGO_SRC, o
                 <strong>Tên loại đơn:</strong> <span className="text-slate-900 font-semibold">{typeToDelete.name}</span>
               </p>
               <p>
-                <strong>Mã thủ tục:</strong> <span className="font-mono text-blue-600 font-semibold">{typeToDelete.code}</span> • <strong>Đơn vị:</strong> {typeToDelete.departmentName}
+                <strong>Đơn vị phụ trách:</strong> <span className="text-slate-700 font-semibold">{typeToDelete.departmentName}</span> • <strong>Danh mục:</strong> {typeToDelete.category}
               </p>
             </div>
 

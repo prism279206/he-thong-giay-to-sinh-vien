@@ -22,7 +22,7 @@ export const DEFAULT_MOCK_SIGNATURE =
   'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 80" width="200" height="80"><path d="M20,50 Q45,15 70,45 T120,35 Q145,20 170,55 M50,45 Q75,70 110,30 T160,50" fill="none" stroke="%231D4ED8" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg>';
 
 export const DEFAULT_TEACHER_SIGNATURE =
-  'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 220 80" width="220" height="80"><path d="M25,48 Q55,20 85,42 T135,28 Q165,15 195,50 M60,42 Q90,65 125,25 T175,45" fill="none" stroke="%237C3AED" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/><text x="65" y="72" font-family="sans-serif" font-size="11" font-weight="bold" fill="%236D28D9">Nguyễn Thị Mai</text></svg>';
+  'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 220 80" width="220" height="80"><path d="M25,48 Q55,20 85,42 T135,28 Q165,15 195,50 M60,42 Q90,65 125,25 T175,45" fill="none" stroke="%237C3AED" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/><text x="65" y="72" font-family="sans-serif" font-size="11" font-weight="bold" fill="%236D28D9">Đỗ Thị Hương</text></svg>';
 
 const STORAGE_KEY = 'vmh_shared_requests_v6';
 
@@ -41,7 +41,19 @@ export function getStoredRequests() {
       return INITIAL_SHARED_REQUESTS;
     }
     const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) ? parsed : INITIAL_SHARED_REQUESTS;
+    if (Array.isArray(parsed)) {
+      // Tự động khử trùng lặp (deduplicate) theo id nếu trước đó bị lưu đúp
+      const seen = new Set();
+      const unique = [];
+      for (const item of parsed) {
+        if (item && item.id && !seen.has(item.id)) {
+          seen.add(item.id);
+          unique.push(item);
+        }
+      }
+      return unique;
+    }
+    return INITIAL_SHARED_REQUESTS;
   } catch {
     return INITIAL_SHARED_REQUESTS;
   }
@@ -66,6 +78,10 @@ export function saveStoredRequests(requests) {
  */
 export function addStudentRequest(newRequest) {
   const currentList = getStoredRequests();
+  // Chặn tuyệt đối không lưu trùng lặp nếu đơn đã tồn tại
+  if (currentList.some((r) => r.id === newRequest.id)) {
+    return currentList;
+  }
   const updated = [newRequest, ...currentList];
   saveStoredRequests(updated);
 
@@ -88,6 +104,16 @@ export function addStudentRequest(newRequest) {
     requestId: newRequest.id,
   });
 
+  return updated;
+}
+
+/**
+ * Xóa một lá đơn khỏi kho lưu trữ (Sinh viên hủy đơn)
+ */
+export function deleteStoredRequest(requestId) {
+  const currentList = getStoredRequests();
+  const updated = currentList.filter((r) => r.id !== requestId);
+  saveStoredRequests(updated);
   return updated;
 }
 
@@ -332,7 +358,7 @@ export function signAndApproveByTeacher(requestId, teacherInfoOrSig, signatureOr
   const timeStr = `${String(now.getDate()).padStart(2, '0')}/${String(now.getMonth() + 1).padStart(2, '0')}/${now.getFullYear()} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
 
   let sigToUse = DEFAULT_TEACHER_SIGNATURE;
-  let teacherName = 'ThS. Nguyễn Thị Mai';
+  let teacherName = 'Đỗ Thị Hương';
 
   if (typeof teacherInfoOrSig === 'string' && teacherInfoOrSig.startsWith('data:image')) {
     sigToUse = teacherInfoOrSig;

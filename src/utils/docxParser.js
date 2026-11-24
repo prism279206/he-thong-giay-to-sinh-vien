@@ -329,20 +329,18 @@ export function analyzeDocumentStructure(rawText, defaultFileName = '') {
   }
 
   // 2. Nhận diện Đơn vị xử lý (Kính gửi: ...)
-  let detectedDepartment = 'Phòng Đào tạo & Quản lý Khoa học';
+  let detectedDepartment = 'Phòng Đào tạo';
   for (let i = 0; i < lines.length; i++) {
     if (/kính gửi/i.test(lines[i])) {
       const scope = lines.slice(i, Math.min(lines.length, i + 5)).join(' ');
       if (/khảo thí/i.test(scope)) {
-        detectedDepartment = 'Phòng Đào tạo & Bộ phận Khảo thí';
-      } else if (/công tác sinh viên|ctsv/i.test(scope)) {
-        detectedDepartment = 'Phòng Công tác Sinh viên';
-      } else if (/tài chính|kế toán/i.test(scope)) {
-        detectedDepartment = 'Phòng Kế toán & Tài chính';
-      } else if (/tuyển sinh|truyền thông/i.test(scope)) {
-        detectedDepartment = 'Phòng Tuyển sinh & Truyền thông';
-      } else if (/giảng viên chủ nhiệm|gvcn/i.test(scope)) {
-        detectedDepartment = 'Giảng viên chủ nhiệm';
+        detectedDepartment = 'Phòng Khảo thí';
+      } else if (/công tác sinh viên|ctsv|xe buýt|ký túc xá|ktx/i.test(scope)) {
+        detectedDepartment = 'Phòng Công tác sinh viên';
+      } else if (/giảng viên chủ nhiệm|gvcn|giáo viên chủ nhiệm/i.test(scope)) {
+        detectedDepartment = 'Giảng viên - GVCN';
+      } else {
+        detectedDepartment = 'Phòng Đào tạo';
       }
       break;
     }
@@ -357,8 +355,8 @@ export function analyzeDocumentStructure(rawText, defaultFileName = '') {
     detectedCategory = 'Xác nhận học tập';
   } else if (/học phí|miễn giảm|vay vốn|tiền|tài chính/i.test(titleAndDept)) {
     detectedCategory = 'Học phí & Tài chính';
-  } else if (/xe buýt|thẻ|ktx|ký túc xá|đời sống/i.test(titleAndDept)) {
-    detectedCategory = 'Đời sống sinh viên';
+  } else if (/xe buýt|thẻ|ktx|ký túc xá|đời sống|công tác/i.test(titleAndDept)) {
+    detectedCategory = 'Công tác sinh viên';
   }
 
   // 4. Bóc tách các trường: Phân loại rạch ròi giữa CMS Fields (tự điền từ API) và Custom Fields (chừa ô trống)
@@ -434,7 +432,6 @@ export function analyzeDocumentStructure(rawText, defaultFileName = '') {
 
   return {
     title: detectedTitle || 'Đơn đề nghị mới',
-    suggestedCode: slugifyTitle(detectedTitle),
     department: detectedDepartment,
     category: detectedCategory,
     cmsFields: detectedCmsFields,

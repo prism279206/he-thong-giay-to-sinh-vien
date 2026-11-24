@@ -28,7 +28,7 @@ function renderCategoryIcon(category, code, className = 'h-5 w-5') {
   if (code === 'MIEN_GIAM_HOC_PHI' || category === 'Học phí & Tài chính') return <BadgePercent className={className} />;
   if (code === 'PHUC_KHAO' || code === 'HOAN_THI' || category === 'Khảo thí & Điểm') return <FileSearch className={className} />;
   if (code === 'BAO_LUU') return <PauseCircle className={className} />;
-  if (code === 'VE_THANG_XE_BUYT' || code === 'DANG_KY_KTX' || category === 'Đời sống sinh viên') return <Bus className={className} />;
+  if (code === 'VE_THANG_XE_BUYT' || code === 'DANG_KY_KTX' || category === 'Công tác sinh viên' || category === 'Đời sống sinh viên') return <Bus className={className} />;
   return <ClipboardList className={className} />;
 }
 
