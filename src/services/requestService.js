@@ -56,6 +56,13 @@ export function mapDatabaseRequestToFrontend(row) {
     status: row.trang_thai || 'pending',
     statusLabel: getStatusLabel(row.trang_thai),
     assignedTo: d.assignedTo || (row.don_vi_xu_ly ? { name: row.don_vi_xu_ly, displayName: row.don_vi_xu_ly } : null),
+    assignedSigners: d.assignedSigners || (d.assignedTo ? [d.assignedTo] : []),
+    signatures: d.signatures || [],
+    teacherApprovedBy: d.teacherApprovedBy || null,
+    teacherApprovedAt: d.teacherApprovedAt || null,
+    departmentSignature: d.departmentSignature || '',
+    departmentApprovedBy: d.departmentApprovedBy || null,
+    departmentApprovedAt: d.departmentApprovedAt || null,
     urgency: d.urgency || 'normal',
     deadline: d.deadline || null,
     studentSignature: row.chu_ky_sinh_vien || d.studentSignature || '',
@@ -248,59 +255,102 @@ export function subscribeAllRequestsChange(callback) {
 }
 
 /**
- * Phân phát đơn tới Giảng viên hoặc Phòng ban (Cán bộ Quản trị viên)
+ * Phân phát đơn tới danh sách Giảng viên hoặc Phòng ban (Cán bộ Quản trị viên, hỗ trợ tối đa 10 người)
  */
-export async function dispatchRequest(requestId, targetInfo, urgency) {
+export async function dispatchRequest(requestId, targetInfoOrSigners, urgency, note, deadline) {
+  const isArray = Array.isArray(targetInfoOrSigners);
+  const signers = isArray ? targetInfoOrSigners.slice(0, 10) : [targetInfoOrSigners];
+  const primaryTarget = signers[0] || null;
+  const targetNames = signers.map((s) => s.displayName || s.name).join(', ');
+
   try {
+    const { data: currentReq } = await supabase
+      .from('requests')
+      .select('du_lieu_don')
+      .eq('id', requestId)
+      .maybeSingle();
+
+    const currentDuLieu = currentReq?.du_lieu_don || {};
+    const updatedDuLieu = {
+      ...currentDuLieu,
+      assignedSigners: signers,
+      assignedTo: primaryTarget,
+      urgency: urgency || currentDuLieu.urgency || 'normal',
+      deadline: deadline || currentDuLieu.deadline || 'Trong 48 giờ',
+      dispatchNote: note || '',
+    };
+
     await supabase
       .from('requests')
       .update({
         trang_thai: 'in_progress',
-        don_vi_xu_ly: targetInfo.displayName || targetInfo.name,
+        don_vi_xu_ly: targetNames,
+        du_lieu_don: updatedDuLieu,
       })
       .eq('id', requestId);
 
     await supabase.from('request_step_logs').insert([
       {
         request_id: requestId,
-        hanh_dong: `Phân phát tới: ${targetInfo.displayName || targetInfo.name}`,
-        ghi_chu: targetInfo.note || '',
+        hanh_dong: `Phân phát tới ${signers.length} người ký: ${targetNames}`,
+        ghi_chu: note || '',
       },
     ]);
   } catch (err) {
     console.warn('Cập nhật Supabase lỗi:', err.message);
   }
 
-  dispatchMockRequest(requestId, targetInfo, urgency);
+  dispatchMockRequest(requestId, signers, urgency, deadline, note);
   return { success: true };
 }
 
 /**
- * Ký duyệt đơn (Giảng viên / GVCN)
+ * Ký duyệt đơn (Giảng viên / GVCN / Phòng ban Khảo thí, Đào tạo...)
  */
-export async function signAndApproveRequest(requestId, teacherSignature, teacherName, note) {
+export async function signAndApproveRequest(requestId, teacherSignature, teacherName, note, signerDetails = null) {
   try {
+    const { data: currentReq } = await supabase
+      .from('requests')
+      .select('du_lieu_don, chu_ky_giang_vien')
+      .eq('id', requestId)
+      .maybeSingle();
+
+    const currentDuLieu = currentReq?.du_lieu_don || {};
+    const dept = signerDetails?.department || signerDetails?.donVi || '';
+    const isKhaoThi =
+      dept.toLowerCase().includes('khảo thí') ||
+      (teacherName && teacherName.toLowerCase().includes('dung'));
+
+    const updateObj = {
+      du_lieu_don: {
+        ...currentDuLieu,
+        teacherApprovedBy: teacherName,
+        teacherApprovedAt: new Date().toLocaleString('vi-VN', { hour12: false }),
+        ...(isKhaoThi ? { departmentSignature: teacherSignature, departmentApprovedBy: teacherName } : {}),
+      },
+    };
+
+    if (!isKhaoThi || !currentReq?.chu_ky_giang_vien) {
+      updateObj.chu_ky_giang_vien = teacherSignature;
+    }
+
     await supabase
       .from('requests')
-      .update({
-        trang_thai: 'completed',
-        chu_ky_giang_vien: teacherSignature,
-        closed_at: new Date().toISOString(),
-      })
+      .update(updateObj)
       .eq('id', requestId);
 
     await supabase.from('request_step_logs').insert([
       {
         request_id: requestId,
-        hanh_dong: 'Ký duyệt đơn điện tử (GVCN)',
-        ghi_chu: note || `GVCN (${teacherName}) đã ký số xác nhận hợp lệ.`,
+        hanh_dong: `${teacherName} ký số phê duyệt đơn`,
+        ghi_chu: note || `${teacherName} (${dept || 'Cán bộ'}) đã ký số xác nhận hợp lệ.`,
       },
     ]);
   } catch (err) {
     console.warn('Cập nhật Supabase lỗi:', err.message);
   }
 
-  signMockRequest(requestId, { name: teacherName }, teacherSignature);
+  signMockRequest(requestId, { name: teacherName }, teacherSignature, signerDetails);
   return { success: true };
 }
 
@@ -386,6 +436,43 @@ export async function cancelAndRemoveRequest(requestId) {
 }
 
 /**
+ * Kiểm tra xem đối tượng hoặc tên loại đơn có phải là Đơn xin cấp bảng điểm học tập hay không.
+ * Xử lý chuẩn xác cả Unicode tổ hợp (NFD) và Unicode dựng sẵn (NFC), không phụ thuộc hoa thường.
+ */
+export function isTranscriptType(target) {
+  if (!target) return false;
+  if (typeof target === 'string') {
+    const s = target
+      .toLowerCase()
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/đ/g, 'd')
+      .replace(/Đ/g, 'D');
+    return s.includes('bang diem') || s.includes('transcript');
+  }
+  if (target.formType === 'transcript' || target.cau_hinh?.formType === 'transcript') return true;
+  if (target.formCode === '04.26-BM/CTSV/APC.' || target.cau_hinh?.formCode === '04.26-BM/CTSV/APC.') return true;
+  const s = [
+    target.name,
+    target.title,
+    target.typeName,
+    target.typeSlug,
+    target.typeId,
+    target.code,
+    target.id,
+    target.ten_loai_don,
+  ]
+    .filter(Boolean)
+    .join(' ')
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/đ/g, 'd')
+    .replace(/Đ/g, 'D');
+  return s.includes('bang diem') || s.includes('transcript');
+}
+
+/**
  * Lấy toàn bộ danh mục loại đơn thực tế từ bảng request_types trên Supabase
  */
 export async function fetchRequestTypesFromSupabase() {
@@ -400,23 +487,38 @@ export async function fetchRequestTypesFromSupabase() {
       return { data: null, error };
     }
 
-    const mapped = (data || []).map((row) => ({
-      id: row.id,
-      name: row.ten_loai_don,
-      category: row.danh_muc || 'Học vụ & Đào tạo',
-      departmentName: row.don_vi_phu_trach || row.danh_muc || 'Phòng ban Chức năng',
-      slaDays: row.thoi_han_ngay || 3,
-      description: row.mo_ta || '',
-      isActive: row.dang_hoat_dong !== false,
-      hasTemplateFile: Boolean(row.file_mau_url),
-      templateFileName: row.file_mau_ten || '',
-      templateFileSize: row.cau_hinh?.file_size || '—',
-      templateFileUrl: row.file_mau_url || null,
-      isImage: Boolean(row.cau_hinh?.isImage),
-      fields: row.cau_hinh?.fields || [],
-      cmsFields: row.cau_hinh?.cmsFields || [],
-      createdAt: row.created_at ? new Date(row.created_at).toLocaleDateString('vi-VN') : '',
-    }));
+    const mapped = (data || []).map((row) => {
+      const isTranscript = isTranscriptType(row);
+      return {
+        id: row.id,
+        name: row.ten_loai_don,
+        category: row.danh_muc || (isTranscript ? 'Học vụ & Đào tạo' : 'Xác nhận học tập'),
+        departmentName: row.don_vi_phu_trach || row.danh_muc || (isTranscript ? 'Phòng Đào tạo' : 'Phòng ban Chức năng'),
+        slaDays: row.thoi_han_ngay || 3,
+        description: row.mo_ta || '',
+        isActive: row.dang_hoat_dong !== false,
+        hasTemplateFile: Boolean(row.file_mau_url),
+        templateFileName: row.file_mau_ten || '',
+        templateFileSize: row.cau_hinh?.file_size || '—',
+        templateFileUrl: row.file_mau_url || null,
+        isImage: Boolean(row.cau_hinh?.isImage),
+        fields: row.cau_hinh?.fields || [],
+        cmsFields: row.cau_hinh?.cmsFields || (isTranscript ? [
+          { key: 'fullName', label: 'Họ và tên', cmsKey: 'hoTen' },
+          { key: 'studentCode', label: 'Mã số sinh viên', cmsKey: 'maSinhVien' },
+          { key: 'dob', label: 'Ngày sinh', cmsKey: 'ngaySinh' },
+          { key: 'phone', label: 'Số điện thoại', cmsKey: 'sdt' },
+          { key: 'className', label: 'Lớp học', cmsKey: 'lop' },
+          { key: 'major', label: 'Ngành', cmsKey: 'nganh' },
+          { key: 'cohort', label: 'Khóa', cmsKey: 'khoaHoc' },
+        ] : []),
+        formCode: row.cau_hinh?.formCode || (isTranscript ? '04.26-BM/CTSV/APC.' : null),
+        formRevision: row.cau_hinh?.formRevision || (isTranscript ? 'Lần ban hành/sửa đổi: 1/0' : null),
+        formType: row.cau_hinh?.formType || (isTranscript ? 'transcript' : 'standard'),
+        cau_hinh: row.cau_hinh || {},
+        createdAt: row.created_at ? new Date(row.created_at).toLocaleDateString('vi-VN') : '',
+      };
+    });
 
     return { data: mapped, error: null };
   } catch (err) {
@@ -473,6 +575,9 @@ export async function createRequestTypeOnSupabase(typeItem) {
         cmsFields: typeItem.cmsFields || [],
         isImage: typeItem.isImage || false,
         file_size: typeItem.templateFileSize || '—',
+        formCode: typeItem.formCode || (isTranscriptType(typeItem.name) ? '04.26-BM/CTSV/APC.' : null),
+        formRevision: typeItem.formRevision || (isTranscriptType(typeItem.name) ? 'Lần ban hành/sửa đổi: 1/0' : null),
+        formType: typeItem.formType || (isTranscriptType(typeItem.name) ? 'transcript' : 'standard'),
       },
     };
 

@@ -10,18 +10,10 @@
 | 2026-11-24 | Sinh viên chỉ xác thực qua CMS API trường, không lưu tài khoản sinh viên vào Supabase | Trường có hàng nghìn sinh viên biến động liên tục; Supabase Auth và profiles chỉ quản lý Cán bộ & Giảng viên để duyệt và quản trị |
 | 2026-11-24 | Xóa đơn completed sau 3 tháng và cho phép sinh viên hủy đơn lập tức | Giảm tải database, bảo vệ quyền riêng tư và dọn dẹp đơn không còn nhu cầu |
 | 2026-11-24 | Chuẩn hóa 4 đơn vị nhân sự tiếp nhận & xử lý hồ sơ | 1. Phòng Đào tạo, 2. Phòng Công tác sinh viên, 3. Phòng Khảo thí, 4. Giảng viên - GVCN |
-<<<<<<< Updated upstream
-| 2026-11-24 | Bắt buộc Giảng viên phải ký tay/tải ảnh chữ ký thực tế trước khi xác nhận duyệt đơn | Đảm bảo tính pháp lý và trách nhiệm thực tế, tránh phê duyệt tự động thiếu chữ ký |
-| 2026-11-24 | Bỏ khối dấu đỏ số hóa trên văn bản A4, chỉ xác nhận trạng thái hoàn thành | Văn bản A4 tuân thủ chuẩn văn bản hành chính gọn gàng, hệ thống thông báo trạng thái qua cổng portal |
-| 2026-11-24 | Khóa quyền ký lại của Giảng viên và cấp quyền xóa chữ ký cho Quản trị viên | Đảm bảo tính bất biến của chữ ký đã duyệt, chỉ Quản trị viên mới có thẩm quyền hủy/thu hồi để GV ký lại |
-| 2026-11-24 | Đặt @page { margin: 0mm !important } và tạm thời xóa document.title khi in | Loại bỏ triệt để header & footer của trình duyệt (tiêu đề, localhost, ngày giờ, số trang), bảo toàn lề chuẩn A4 qua padding văn bản |
-| 2026-11-24 | Bỏ chú thích '(Đã ký duyệt điện tử)' và '(Chữ ký số cá nhân)' dưới chữ ký trên bản A4 | Giữ nguyên bản in thực tế chỉ hiển thị ảnh chữ ký và họ tên chuẩn hành chính |
-| 2026-11-24 | Xóa bỏ hoàn toàn mã đơn dưới tiêu đề và bỏ khung viền xám ở mục lý do | Văn bản in A4 giữ nguyên vẹn tính trang trọng và nền giấy trắng phẳng chuẩn hành chính |
-| 2026-11-24 | Dùng đơn vị point (pt) thay cho pixel (px) cho văn bản A4 (13.5pt - 14pt) | 14px chỉ tương đương 10.5pt khiến bản in A4 bị nhỏ; dùng 13.5pt - 14pt đúng chuẩn Nghị định 30/2020/NĐ-CP |
-| 2026-11-24 | Đối tượng giải quyết lấy dữ liệu động từ bảng profiles Supabase theo quy tắc ho_ten + don_vi | Don_vi là 'Giảng viên' -> Giảng viên/GVCN (nhãn: ${ho_ten} - Giảng viên). Các don_vi phòng ban khác (như 'Phòng đào tạo') -> Phòng ban (nhãn: ${ho_ten} - ${don_vi}). Tự động cập nhật realtime khi database thay đổi |
-| 2026-11-24 | Tuyệt đối không dùng thông tin cá nhân thật trong các bản mẫu đơn xem trước | Hỗ trợ 2 chế độ xem: 1. Để trắng dòng kẻ chấm lửng (mẫu phôi trống), 2. Điền nội dung giả định (Nguyễn Văn A - 61112345678) |
-| 2026-11-24 | Danh mục loại đơn (request_types) đồng bộ 100% từ Supabase, không hardcode | Dữ liệu trên database trống thì web trống; hỗ trợ Supabase Realtime tự động cập nhật khi admin thêm/xóa loại đơn |
-| 2026-11-24 | Toàn bộ hồ sơ và lịch sử xử lý (requests) đồng bộ 100% từ Supabase, không dùng dữ liệu ảo | Đảm bảo tính nhất quán giữa database và giao diện web; khi database trống thì hiển thị trạng thái rỗng chuyên nghiệp |
+| 2026-11-24 | Thêm tài khoản Giảng viên thầy Đàm Văn Luận (luan.dam1@caodangvietmyhanoi.edu.vn) | Cung cấp tài khoản Giảng viên / GVCN phê duyệt đơn, tự động xuất hiện trong nhóm Giảng viên điều phối của Quản trị viên |
+| 2026-11-24 | Nâng cấp hệ thống phân phát đơn hỗ trợ chọn nhiều người ký (tối đa 10 người) | Nhiều loại đơn hành chính yêu cầu từ 2 đến 5 người ký xác nhận (GVCN, Khảo thí, Đào tạo, Ban Giám hiệu...); hỗ trợ chọn tối đa 10 người ký, phân luồng từng người ký theo slot riêng và hiển thị đầy đủ trên văn bản in A4 |
+| 2026-11-24 | Phân quyền hiển thị đơn nghiêm ngặt trên Teacher Portal | Chỉ cán bộ/giảng viên được phân công (`assignedSigners` hoặc `assignedTo`) mới nhìn thấy hồ sơ, các tài khoản khác thấy 0 đơn |
+| 2026-11-24 | Bóc tách và render động biểu mẫu theo `cmsFields` và `isTranscriptType` | Tránh ép layout cứng đơn xác nhận HSSV lên các biểu mẫu Word khác; chuẩn hóa Unicode NFD/NFC để không bao giờ nhận diện sai |
 
 
 ## Lỗi đã gặp
@@ -45,6 +37,8 @@
 | Supabase chặn xóa dòng trong `request_types` bằng Table Editor | Bảng `workflows`, `workflow_steps` và `requests` chứa khóa ngoại liên kết tới `request_types(id)` | Chạy lệnh `TRUNCATE TABLE ... CASCADE` trong Supabase SQL Editor để xóa sạch triệt để trong 1 giây; cập nhật `ON DELETE CASCADE` cho khóa ngoại |
 | Lịch sử xử lý đơn dùng dữ liệu ảo và đơn mới không hiện trên database | `createRequest` gửi cột thừa (`lop`, `khoa`) làm lỗi insert Supabase; `listStaffRequests` có điều kiện `data.length > 0` nên khi DB rỗng lại fallback lấy mock cache cũ | Chuẩn hóa payload lưu đơn vào `requests`, kết nối trực tiếp `listStaffRequests` với Supabase Realtime, tự động dọn sạch cache localStorage cũ |
 | Tab Lịch sử của Giảng viên hiển thị 2 dòng đơn ảo (#2025-1038, #2025-1030) | Giao diện Tab Lịch sử trong `TeacherDashboardPage.jsx` trước đó viết mã tĩnh (hardcoded mockup) | Thay thế hoàn toàn bằng danh sách động kết nối Supabase, hiển thị đúng các đơn đã xử lý thật hoặc trạng thái rỗng khi chưa có đơn |
+| Đơn cấp bảng điểm hiển thị sai layout (ép layout đơn xác nhận HSSV) | `OfficialDocumentView` và `StudentConfirmationForm` trước đó hardcode cố định layout theo Đơn xác nhận HSSV cho mọi loại đơn | Nâng cấp bộ render biểu mẫu và văn bản A4 hỗ trợ cấu hình động theo loại đơn (nhận diện form bảng điểm), giữ nguyên 100% bố cục gốc, đúng 7 trường thông tin, các tùy chọn toàn khóa/năm học/học kỳ và đủ 3 vị trí chữ ký |
+| Đẩy file Word lên hệ thống bị sai layout và hiện CCCD, Cơ sở học tập | Text XML trong file Word sử dụng Unicode tổ hợp (NFD) khiến regex `/bảng điểm/i` trả về false; `formType` bị lưu thành `standard` và form ép các trường CCCD/Cơ sở học tập | Viết hàm `isTranscriptType` chuẩn hóa NFD/NFC, tự động gán đúng 7 trường CMS của đơn bảng điểm khi parse Word; đồng thời cấu hình render trường động theo `cmsFields` cho mọi mẫu đơn mới |
 
 ## Điều cần nhớ
 - (ghi dần)

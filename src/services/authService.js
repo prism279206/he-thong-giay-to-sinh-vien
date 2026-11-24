@@ -37,12 +37,16 @@ export function parseLoginIdentifier(input) {
     return { isValid: true, type: 'email', value: lower };
   }
 
-  // 2. Trường hợp là Mã cán bộ / Giảng viên (ví dụ: admincdvmhn, gvcn, QL001, GV001, AD01, admin...)
+  // 2. Trường hợp là Mã cán bộ / Giảng viên (ví dụ: admincdvmhn, gvcn, QL001, GV001, AD01, admin, dung.dinh1, luan.dam1...)
   if (
-    /^(ql|gv|cb|ad)\d+$/i.test(clean) ||
+    /^(ql|gv|cb|ad|kt)\d+$/i.test(clean) ||
     lower === 'admin' ||
     lower === 'admincdvmhn' ||
-    lower === 'gvcn'
+    lower === 'gvcn' ||
+    lower === 'dung.dinh1' ||
+    lower.startsWith('dung.dinh') ||
+    lower === 'luan.dam1' ||
+    lower.startsWith('luan.dam')
   ) {
     return { isValid: true, type: 'staff_code', value: lower };
   }
@@ -93,6 +97,10 @@ export async function signIn(identifier, password) {
       targetEmail = 'admin@caodangvietmyhanoi.edu.vn';
     } else if (valLower === 'gv002' || valLower === 'gvcn' || valLower === 'gv001') {
       targetEmail = 'huong.do1@caodangvietmyhanoi.edu.vn';
+    } else if (valLower === 'dung.dinh1' || valLower === 'kt001' || valLower.startsWith('dung')) {
+      targetEmail = 'dung.dinh1@caodangvietmyhanoi.edu.vn';
+    } else if (valLower === 'luan.dam1' || valLower === 'gv003' || valLower.startsWith('luan')) {
+      targetEmail = 'luan.dam1@caodangvietmyhanoi.edu.vn';
     }
   }
 
@@ -129,7 +137,9 @@ export async function signIn(identifier, password) {
         value.includes('admin') ||
         value.includes('gvcn') ||
         value.includes('ql') ||
-        value.includes('huong.do');
+        value.includes('huong.do') ||
+        value.includes('dung.dinh') ||
+        value.includes('luan.dam');
       if (!isKnownStaffEmail) {
         return {
           data: null,
@@ -308,7 +318,55 @@ export async function signIn(identifier, password) {
       };
     }
 
-    // 4.3 Nếu là sinh viên (Bắt buộc phải có hồ sơ thực tế từ API CMS)
+    // 4.3 Nếu là Cán bộ Khảo thí Đinh Thuỳ Dung (dung.dinh1@..., mã dung.dinh1, KT001)
+    if (
+      (type === 'staff_code' && (valLower === 'dung.dinh1' || valLower === 'kt001' || valLower.startsWith('dung'))) ||
+      targetEmail.includes('dung.dinh')
+    ) {
+      const dungEmail = targetEmail.includes('@')
+        ? targetEmail
+        : 'dung.dinh1@caodangvietmyhanoi.edu.vn';
+      return {
+        data: {
+          user: { id: 'mock-kt001', email: dungEmail, role: 'staff', code: 'dung.dinh1' },
+          profile: {
+            id: 'mock-kt001',
+            email: dungEmail,
+            ho_ten: 'Đinh Thuỳ Dung',
+            role: 'staff',
+            ma_can_bo: 'dung.dinh1',
+            don_vi: 'Phòng Khảo thí',
+          },
+        },
+        error: null,
+      };
+    }
+
+    // 4.4 Nếu là Giảng viên Đàm Văn Luận (luan.dam1@..., mã luan.dam1, GV003)
+    if (
+      (type === 'staff_code' && (valLower === 'luan.dam1' || valLower === 'gv003' || valLower.startsWith('luan'))) ||
+      targetEmail.includes('luan.dam')
+    ) {
+      const luanEmail = targetEmail.includes('@')
+        ? targetEmail
+        : 'luan.dam1@caodangvietmyhanoi.edu.vn';
+      return {
+        data: {
+          user: { id: 'mock-gv003', email: luanEmail, role: 'staff', code: 'luan.dam1' },
+          profile: {
+            id: 'mock-gv003',
+            email: luanEmail,
+            ho_ten: 'Đàm Văn Luận',
+            role: 'staff',
+            ma_can_bo: 'luan.dam1',
+            don_vi: 'Giảng viên - GVCN',
+          },
+        },
+        error: null,
+      };
+    }
+
+    // 4.5 Nếu là sinh viên (Bắt buộc phải có hồ sơ thực tế từ API CMS)
     if (studentCmsData) {
       const student = studentCmsData;
       return {

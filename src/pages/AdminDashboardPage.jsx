@@ -32,6 +32,7 @@ import {
   Eye,
   Trash2,
   AlertTriangle,
+  Users,
 } from 'lucide-react';
 import { DEFAULT_LOGO_SRC } from './LoginPage';
 import OfficialDocumentView from '../components/OfficialDocumentView';
@@ -45,6 +46,7 @@ import {
   dispatchRequest,
   fetchRequestTypesFromSupabase,
   subscribeRequestTypesChange,
+  isTranscriptType,
   listStaffRequests,
   subscribeAllRequestsChange,
 } from '../services/requestService';
@@ -457,6 +459,9 @@ export default function AdminDashboardPage({ user, logoSrc = DEFAULT_LOGO_SRC, o
   const [isCameraActive, setIsCameraActive] = useState(false);
   const [parsedFields, setParsedFields] = useState([]); // [{ id, label, type, required, placeholder }]
   const [parsedCmsFields, setParsedCmsFields] = useState([]); // [{ key, label, cmsKey }]
+  const [parsedFormCode, setParsedFormCode] = useState('');
+  const [parsedFormRevision, setParsedFormRevision] = useState('');
+  const [parsedFormType, setParsedFormType] = useState('standard');
   const [isParsingDocx, setIsParsingDocx] = useState(false);
   const [docxParseSummary, setDocxParseSummary] = useState('');
 
@@ -500,7 +505,10 @@ export default function AdminDashboardPage({ user, logoSrc = DEFAULT_LOGO_SRC, o
   const [viewDocRequest, setViewDocRequest] = useState(null);
   const [isDispatchModalOpen, setIsDispatchModalOpen] = useState(false);
 
-  // Form phân phối đơn
+  // Form phân phối đơn (Hỗ trợ phân phát tới tối đa 10 người ký)
+  const [selectedTargets, setSelectedTargets] = useState([]);
+  const [dispatchTargetFilter, setDispatchTargetFilter] = useState('all');
+  const [targetSearchTerm, setTargetSearchTerm] = useState('');
   const [dispatchType, setDispatchType] = useState('lecturer');
   const [targetId, setTargetId] = useState('');
   const [dispatchDeadline, setDispatchDeadline] = useState('3');
@@ -659,6 +667,21 @@ export default function AdminDashboardPage({ user, logoSrc = DEFAULT_LOGO_SRC, o
           if (res.customFields && Array.isArray(res.customFields)) {
             setParsedFields(res.customFields);
           }
+          if (res.formCode) {
+            setParsedFormCode(res.formCode);
+          } else if (isTranscriptType(res.title)) {
+            setParsedFormCode('04.26-BM/CTSV/APC.');
+          }
+          if (res.formRevision) {
+            setParsedFormRevision(res.formRevision);
+          } else if (isTranscriptType(res.title)) {
+            setParsedFormRevision('Lần ban hành/sửa đổi: 1/0');
+          }
+          if (res.formType) {
+            setParsedFormType(res.formType);
+          } else if (isTranscriptType(res.title)) {
+            setParsedFormType('transcript');
+          }
           setDocxParseSummary(
             res.summary ||
               `Đã đọc file Word thành công! Tự động liên kết ${res.cmsFields?.length || 0} mục với CMS và bóc tách ${res.customFields?.length || 0} ô trống cho sinh viên tự điền.`
@@ -745,6 +768,9 @@ export default function AdminDashboardPage({ user, logoSrc = DEFAULT_LOGO_SRC, o
       templateFileSize: uploadedFile ? uploadedFile.size : '—',
       templateFileUrl: uploadedFile ? uploadedFile.previewUrl : null,
       isImage: uploadedFile ? uploadedFile.isImage : false,
+      formCode: parsedFormCode || (isTranscriptType(newTypeName) ? '04.26-BM/CTSV/APC.' : null),
+      formRevision: parsedFormRevision || (isTranscriptType(newTypeName) ? 'Lần ban hành/sửa đổi: 1/0' : null),
+      formType: parsedFormType || (isTranscriptType(newTypeName) ? 'transcript' : 'standard'),
       cmsFields: parsedCmsFields,
       fields: parsedFields,
       createdAt: new Date().toLocaleDateString('vi-VN'),
@@ -777,6 +803,9 @@ export default function AdminDashboardPage({ user, logoSrc = DEFAULT_LOGO_SRC, o
     setUploadedFile(null);
     setParsedFields([]);
     setParsedCmsFields([]);
+    setParsedFormCode('');
+    setParsedFormRevision('');
+    setParsedFormType('standard');
     setDocxParseSummary('');
 
     setActionSuccessMsg(`Đã tạo và số hóa thành công loại đơn mới: "${newTypeItem.name}"!`);
@@ -810,6 +839,70 @@ export default function AdminDashboardPage({ user, logoSrc = DEFAULT_LOGO_SRC, o
     setTimeout(() => setActionSuccessMsg(''), 4500);
   };
 
+  // Lọc danh sách nhân sự ứng viên trong modal phân phát
+  const filteredCandidates = useMemo(() => {
+    let pool = [];
+    if (dispatchTargetFilter === 'lecturer') {
+      pool = dispatchLecturers.map((l) => ({ ...l, type: 'lecturer' }));
+    } else if (dispatchTargetFilter === 'department') {
+      pool = dispatchDepartments.map((d) => ({ ...d, type: 'department' }));
+    } else {
+      pool = [
+        ...dispatchLecturers.map((l) => ({ ...l, type: 'lecturer' })),
+        ...dispatchDepartments.map((d) => ({ ...d, type: 'department' })),
+      ];
+    }
+
+    if (!targetSearchTerm.trim()) return pool;
+    const q = targetSearchTerm.trim().toLowerCase();
+    return pool.filter(
+      (c) =>
+        (c.name && c.name.toLowerCase().includes(q)) ||
+        (c.label && c.label.toLowerCase().includes(q)) ||
+        (c.donVi && c.donVi.toLowerCase().includes(q)) ||
+        (c.email && c.email.toLowerCase().includes(q))
+    );
+  }, [dispatchLecturers, dispatchDepartments, dispatchTargetFilter, targetSearchTerm]);
+
+  // Thao tác chọn / bỏ chọn nhân sự ký duyệt (tối đa 10 người)
+  const handleToggleTarget = (candidate, type) => {
+    const isAlreadySelected = selectedTargets.some((t) => t.id === candidate.id);
+    if (isAlreadySelected) {
+      setSelectedTargets(selectedTargets.filter((t) => t.id !== candidate.id));
+    } else {
+      if (selectedTargets.length >= 10) {
+        alert('Đã đạt giới hạn tối đa 10 người tiếp nhận & ký duyệt cho một lá đơn.');
+        return;
+      }
+      setSelectedTargets((prev) => [
+        ...prev,
+        {
+          id: candidate.id,
+          name: candidate.name,
+          role: candidate.role || (candidate.donVi?.toLowerCase().includes('giảng viên') ? 'teacher' : 'staff'),
+          donVi: candidate.donVi || 'Cán bộ',
+          department: candidate.donVi || 'Cán bộ',
+          label: candidate.label || `${candidate.name} - ${candidate.donVi || candidate.role}`,
+          email: candidate.email || '',
+          type: type || candidate.type || (candidate.donVi?.toLowerCase().includes('giảng viên') ? 'lecturer' : 'department'),
+        },
+      ]);
+    }
+  };
+
+  const handleRemoveTarget = (id) => {
+    setSelectedTargets((prev) => prev.filter((t) => t.id !== id));
+  };
+
+  const handleMoveTarget = (index, direction) => {
+    const targetIndex = index + direction;
+    if (targetIndex < 0 || targetIndex >= selectedTargets.length) return;
+    const reordered = [...selectedTargets];
+    const [moved] = reordered.splice(index, 1);
+    reordered.splice(targetIndex, 0, moved);
+    setSelectedTargets(reordered);
+  };
+
   // Mở modal phân phát đơn
   const handleOpenDispatch = (req) => {
     // Tự động làm mới danh sách nhân sự từ database khi mở modal
@@ -818,94 +911,106 @@ export default function AdminDashboardPage({ user, logoSrc = DEFAULT_LOGO_SRC, o
     setSelectedRequest(req);
     setDispatchUrgency(req.urgency || 'normal');
     setDispatchNote('');
+    setTargetSearchTerm('');
+    setDispatchTargetFilter('all');
 
-    const category = req.typeCategory || '';
-    const isDeptCategory =
-      category.includes('Khảo thí') ||
-      category.includes('Công tác sinh viên') ||
-      category.includes('Ký túc xá') ||
-      category.includes('xe buýt') ||
-      category.includes('Học vụ') ||
-      category.includes('Đào tạo') ||
-      category.includes('Học phí');
-
-    if (isDeptCategory) {
-      setDispatchType('department');
-      // Tìm phòng ban phù hợp theo danh mục loại đơn
-      let matchedDept = null;
-      if (category.includes('Đào tạo') || category.includes('Học vụ') || category.includes('Học phí')) {
-        matchedDept = dispatchDepartments.find((d) => d.label?.includes('Đào tạo') || d.donVi?.includes('Đào tạo'));
-      } else if (category.includes('Công tác sinh viên') || category.includes('Ký túc xá') || category.includes('xe buýt')) {
-        matchedDept = dispatchDepartments.find((d) => d.label?.includes('Công tác sinh viên') || d.donVi?.includes('Công tác sinh viên'));
-      } else if (category.includes('Khảo thí')) {
-        matchedDept = dispatchDepartments.find((d) => d.label?.includes('Khảo thí') || d.donVi?.includes('Khảo thí'));
-      }
-      setTargetId(matchedDept?.id || dispatchDepartments[0]?.id || '');
+    // Nếu đơn đã có danh sách người ký trước đó, khôi phục lại
+    if (Array.isArray(req.assignedSigners) && req.assignedSigners.length > 0) {
+      setSelectedTargets(
+        req.assignedSigners.map((s) => ({
+          id: s.id,
+          name: s.name,
+          role: s.role,
+          donVi: s.donVi || s.department || s.faculty,
+          department: s.department || s.donVi,
+          label: s.displayName || `${s.name} - ${s.donVi || s.role}`,
+          email: s.email,
+          type: s.type || (s.role === 'teacher' ? 'lecturer' : 'department'),
+        }))
+      );
     } else {
-      setDispatchType('lecturer');
-      setTargetId(dispatchLecturers[0]?.id || '');
+      // Gợi ý thông minh ban đầu
+      const initial = [];
+      const category = req.typeCategory || '';
+      const typeName = (req.typeName || '').toLowerCase();
+
+      if (typeName.includes('bảng điểm')) {
+        // Đơn xin cấp bảng điểm: Thường cần GVCN xác nhận và Khảo thí xác nhận
+        const gv = dispatchLecturers[0];
+        if (gv) initial.push({ ...gv, type: 'lecturer' });
+        const kt = dispatchDepartments.find((d) => (d.label || d.donVi || '').toLowerCase().includes('khảo thí')) || dispatchDepartments[0];
+        if (kt && kt.id !== gv?.id) initial.push({ ...kt, type: 'department' });
+      } else if (category.includes('Khảo thí') || category.includes('Đào tạo') || category.includes('Công tác sinh viên')) {
+        let matchedDept = null;
+        if (category.includes('Đào tạo') || category.includes('Học vụ') || category.includes('Học phí')) {
+          matchedDept = dispatchDepartments.find((d) => (d.label || d.donVi || '').includes('Đào tạo'));
+        } else if (category.includes('Công tác sinh viên') || category.includes('Ký túc xá') || category.includes('xe buýt')) {
+          matchedDept = dispatchDepartments.find((d) => (d.label || d.donVi || '').includes('Công tác sinh viên'));
+        } else if (category.includes('Khảo thí')) {
+          matchedDept = dispatchDepartments.find((d) => (d.label || d.donVi || '').includes('Khảo thí'));
+        }
+        if (matchedDept) initial.push({ ...matchedDept, type: 'department' });
+        else if (dispatchDepartments[0]) initial.push({ ...dispatchDepartments[0], type: 'department' });
+      } else {
+        if (dispatchLecturers[0]) initial.push({ ...dispatchLecturers[0], type: 'lecturer' });
+      }
+
+      setSelectedTargets(initial);
     }
+
     setIsDispatchModalOpen(true);
   };
 
-  // Xác nhận phân phát đơn tới GV hoặc Phòng ban
+  // Xác nhận phân phát đơn tới danh sách người ký (1 - 10 người)
   const handleConfirmDispatch = (e) => {
     e.preventDefault();
     if (!selectedRequest) return;
-    if (!targetId) {
-      alert('Chưa có nhân sự nào được chọn để tiếp nhận giải quyết. Vui lòng kiểm tra danh sách trong Database.');
+    if (selectedTargets.length === 0) {
+      alert('Vui lòng chọn ít nhất 1 cán bộ hoặc giảng viên tiếp nhận giải quyết đơn.');
       return;
     }
 
-    let targetInfo = null;
-    if (dispatchType === 'lecturer') {
-      const gv = dispatchLecturers.find((item) => item.id === targetId) || dispatchLecturers[0];
-      if (!gv) return;
-      targetInfo = {
-        type: 'lecturer',
-        id: gv.id,
-        name: gv.name,
-        role: gv.role,
-        faculty: gv.donVi || 'Giảng viên',
-        displayName: gv.label || `${gv.name} - Giảng viên`,
-        assignedAt: new Date().toLocaleString('vi-VN', { hour12: false }),
-        assignedBy: adminName,
-        note: dispatchNote || 'Kính chuyển Thầy/Cô tiếp nhận kiểm tra và có ý kiến xác nhận.',
-        deadline: `Sau ${dispatchDeadline} ngày làm việc`,
-      };
-    } else {
-      const dept = dispatchDepartments.find((item) => item.id === targetId) || dispatchDepartments[0];
-      if (!dept) return;
-      targetInfo = {
-        type: 'department',
-        id: dept.id,
-        name: dept.name,
-        officer: dept.label || `${dept.name} - ${dept.donVi}`,
-        displayName: dept.label || `${dept.name} - ${dept.donVi}`,
-        donVi: dept.donVi,
-        assignedAt: new Date().toLocaleString('vi-VN', { hour12: false }),
-        assignedBy: adminName,
-        note: dispatchNote || 'Kính chuyển Quý phòng ban kiểm tra và phối hợp giải quyết cho sinh viên.',
-        deadline: `Sau ${dispatchDeadline} ngày làm việc`,
-      };
-    }
+    const assignedSigners = selectedTargets.slice(0, 10).map((item, idx) => ({
+      id: item.id,
+      name: item.name,
+      role: item.role || 'staff',
+      faculty: item.donVi || 'Cán bộ',
+      donVi: item.donVi || 'Cán bộ',
+      department: item.donVi || 'Cán bộ',
+      email: item.email || '',
+      displayName: item.label || `${item.name} - ${item.donVi || item.role}`,
+      type: item.type || (item.donVi?.toLowerCase().includes('giảng viên') ? 'lecturer' : 'department'),
+      order: idx + 1,
+      status: 'pending',
+      signedAt: null,
+      signatureUrl: null,
+      signedBy: null,
+      assignedAt: new Date().toLocaleString('vi-VN', { hour12: false }),
+      assignedBy: adminName,
+      note: dispatchNote || 'Kính chuyển Quý Thầy/Cô tiếp nhận kiểm tra và có ý kiến xác nhận.',
+      deadline: `Sau ${dispatchDeadline} ngày làm việc`,
+    }));
+
+    const primaryTarget = assignedSigners[0];
+    const signerNames = assignedSigners.map((s) => s.displayName || s.name).join(', ');
 
     const updatedList = requestsList.map((item) => {
       if (item.id === selectedRequest.id) {
         return {
           ...item,
           status: 'in_progress',
-          statusLabel: 'Đang xử lý',
+          statusLabel: `Đang xử lý (Chờ ${assignedSigners.length} cán bộ ký)`,
           distributionStatus: 'assigned',
           urgency: dispatchUrgency,
-          assignedTo: targetInfo,
+          assignedTo: primaryTarget,
+          assignedSigners: assignedSigners,
           logs: [
             ...item.logs,
             {
-              action: `Phân phát tới: ${targetInfo.displayName || targetInfo.name}`,
+              action: `Phân phát tới ${assignedSigners.length} người ký: ${signerNames}`,
               actor: adminName,
-              time: targetInfo.assignedAt,
-              note: targetInfo.note,
+              time: primaryTarget.assignedAt,
+              note: dispatchNote || 'Kính chuyển Quý Thầy/Cô và Phòng ban phối hợp giải quyết.',
             },
           ],
         };
@@ -917,11 +1022,11 @@ export default function AdminDashboardPage({ user, logoSrc = DEFAULT_LOGO_SRC, o
     saveStoredRequests(updatedList);
 
     // Đồng bộ lên Supabase
-    dispatchRequest(selectedRequest.id, targetInfo, dispatchUrgency);
+    dispatchRequest(selectedRequest.id, assignedSigners, dispatchUrgency, dispatchNote, `Sau ${dispatchDeadline} ngày làm việc`);
 
     setIsDispatchModalOpen(false);
     setSelectedRequest(null);
-    setActionSuccessMsg(`Đã phân phát thành công hồ sơ tới: ${targetInfo.displayName || targetInfo.name}`);
+    setActionSuccessMsg(`Đã phân phát thành công hồ sơ tới ${assignedSigners.length} người ký: ${signerNames}`);
     setTimeout(() => setActionSuccessMsg(''), 4500);
   };
 
@@ -1508,7 +1613,26 @@ export default function AdminDashboardPage({ user, logoSrc = DEFAULT_LOGO_SRC, o
                             </td>
                             <td className="px-4 py-3.5 whitespace-nowrap text-slate-500">{req.createdAt}</td>
                             <td className="px-4 py-3.5 whitespace-nowrap">
-                              {req.assignedTo ? (
+                              {req.assignedSigners && req.assignedSigners.length > 0 ? (
+                                <div className="flex flex-col gap-0.5 text-xs font-medium text-slate-700">
+                                  <div className="flex items-center gap-1.5">
+                                    <Users className="h-3.5 w-3.5 text-blue-600 shrink-0" />
+                                    <span className="font-semibold text-slate-800">
+                                      {req.assignedSigners.length} người ký
+                                    </span>
+                                    <span className={`text-[10px] font-bold px-1.5 py-0.2 rounded-full ${
+                                      req.assignedSigners.every((s) => s.status === 'signed')
+                                        ? 'bg-emerald-100 text-emerald-700'
+                                        : 'bg-amber-100 text-amber-700'
+                                    }`}>
+                                      {req.assignedSigners.filter((s) => s.status === 'signed').length}/{req.assignedSigners.length}
+                                    </span>
+                                  </div>
+                                  <span className="text-[11px] text-slate-500 truncate max-w-[180px]" title={req.assignedSigners.map((s) => s.displayName || s.name).join(', ')}>
+                                    {req.assignedSigners.map((s) => s.name).join(', ')}
+                                  </span>
+                                </div>
+                              ) : req.assignedTo ? (
                                 <div className="flex items-center gap-1.5 text-xs font-medium text-slate-700">
                                   {req.assignedTo.type === 'lecturer' ? (
                                     <GraduationCap className="h-3.5 w-3.5 text-blue-600 shrink-0" />
@@ -2571,6 +2695,9 @@ export default function AdminDashboardPage({ user, logoSrc = DEFAULT_LOGO_SRC, o
                               campus: 'Trịnh Văn Bô',
                               trainingSystem: 'Chính quy',
                               cohort: 'K24',
+                              formCode: viewingTemplate.formCode || (viewingTemplate.name?.toLowerCase().includes('bảng điểm') ? '04.26-BM/CTSV/APC.' : null),
+                              formRevision: viewingTemplate.formRevision || (viewingTemplate.name?.toLowerCase().includes('bảng điểm') ? 'Lần ban hành/sửa đổi: 1/0' : null),
+                              transcriptType: 'full_course',
                               createdAt: new Date().toLocaleDateString('vi-VN'),
                               reason: viewingTemplate.description || 'Kính đề nghị nhà trường cấp giấy xác nhận để hoàn thiện hồ sơ.',
                               studentSignature: '',
@@ -2595,6 +2722,9 @@ export default function AdminDashboardPage({ user, logoSrc = DEFAULT_LOGO_SRC, o
                               campus: '',
                               trainingSystem: 'Chính quy',
                               cohort: '',
+                              formCode: viewingTemplate.formCode || (viewingTemplate.name?.toLowerCase().includes('bảng điểm') ? '04.26-BM/CTSV/APC.' : null),
+                              formRevision: viewingTemplate.formRevision || (viewingTemplate.name?.toLowerCase().includes('bảng điểm') ? 'Lần ban hành/sửa đổi: 1/0' : null),
+                              transcriptType: '',
                               createdAt: new Date().toLocaleDateString('vi-VN'),
                               reason: '',
                               studentSignature: '',
@@ -2654,10 +2784,10 @@ export default function AdminDashboardPage({ user, logoSrc = DEFAULT_LOGO_SRC, o
         </div>
       )}
 
-      {/* MODAL PHÂN PHÁT ĐƠN CHO GV HOẶC PHÒNG BAN */}
+      {/* MODAL PHÂN PHÁT ĐƠN CHO CÁC BÊN KÝ DUYỆT (HỖ TRỢ TỐI ĐA 10 NGƯỜI) */}
       {isDispatchModalOpen && selectedRequest && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4 backdrop-blur-[2px]">
-          <div className="w-full max-w-lg rounded-2xl bg-white shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
+          <div className="w-full max-w-xl rounded-2xl bg-white shadow-2xl overflow-hidden flex flex-col max-h-[92vh]">
             <div className="flex items-center justify-between border-b border-slate-100 px-6 py-4">
               <div>
                 <h3 className="font-bold text-slate-800">Phân phát đơn: {selectedRequest.id}</h3>
@@ -2675,88 +2805,192 @@ export default function AdminDashboardPage({ user, logoSrc = DEFAULT_LOGO_SRC, o
             <form onSubmit={handleConfirmDispatch} className="flex-1 overflow-y-auto p-6 space-y-4 text-sm">
               <div className="rounded-xl border border-slate-100 bg-slate-50 p-3.5 text-xs space-y-1">
                 <div><strong>Sinh viên:</strong> {selectedRequest.studentName} ({selectedRequest.studentCode}) - {selectedRequest.className}</div>
-                <div className="text-slate-600 italic">"Lý do: {selectedRequest.reason}"</div>
+                <div className="text-slate-600 italic">"Lý do: {selectedRequest.reason || selectedRequest.formData?.reason || 'Xin giải quyết thủ tục'}"</div>
               </div>
 
+              {/* KHU VỰC CHỌN NHIỀU NGƯỜI TIẾP NHẬN & KÝ DUYỆT (TỐI ĐA 10 NGƯỜI) */}
               <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-2">
-                  1. Đối tượng tiếp nhận giải quyết:
-                </label>
-                <div className="grid grid-cols-2 gap-3">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setDispatchType('lecturer');
-                      setTargetId(dispatchLecturers[0]?.id || '');
-                    }}
-                    className={`flex items-center gap-2.5 rounded-xl border p-3 text-left transition-all ${dispatchType === 'lecturer'
-                        ? 'border-[#2563EB] bg-blue-50/70 text-[#2563EB] ring-1 ring-[#2563EB]'
-                        : 'border-slate-200 hover:border-slate-300 text-slate-700'
-                      }`}
-                  >
-                    <GraduationCap className="h-5 w-5 shrink-0" />
-                    <div>
-                      <div className="font-bold text-xs sm:text-sm">Giảng viên / GVCN</div>
-                      <div className="text-[11px] text-slate-500">Xác nhận, cho ý kiến</div>
-                    </div>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setDispatchType('department');
-                      setTargetId(dispatchDepartments[0]?.id || '');
-                    }}
-                    className={`flex items-center gap-2.5 rounded-xl border p-3 text-left transition-all ${dispatchType === 'department'
-                        ? 'border-[#2563EB] bg-blue-50/70 text-[#2563EB] ring-1 ring-[#2563EB]'
-                        : 'border-slate-200 hover:border-slate-300 text-slate-700'
-                      }`}
-                  >
-                    <Building2 className="h-5 w-5 shrink-0" />
-                    <div>
-                      <div className="font-bold text-xs sm:text-sm">Phòng ban Chức năng</div>
-                      <div className="text-[11px] text-slate-500">Đào tạo, CTSV, Khảo thí...</div>
-                    </div>
-                  </button>
+                <div className="flex items-center justify-between mb-2">
+                  <label className="text-xs font-semibold text-slate-700">
+                    1. Chọn danh sách cán bộ / giảng viên ký duyệt:
+                  </label>
+                  <span className={`text-xs font-bold px-2.5 py-0.5 rounded-full ${
+                    selectedTargets.length >= 10
+                      ? 'bg-rose-100 text-rose-700'
+                      : selectedTargets.length > 0
+                      ? 'bg-blue-100 text-[#2563EB]'
+                      : 'bg-slate-100 text-slate-500'
+                  }`}>
+                    Đã chọn: {selectedTargets.length} / 10 người
+                  </span>
                 </div>
-              </div>
 
-              <div>
-                <label className="block text-xs font-semibold text-slate-700 mb-1.5">
-                  {dispatchType === 'lecturer' ? 'Chọn Giảng viên phụ trách:' : 'Chọn Phòng ban chức năng phụ trách:'}
-                </label>
-                <select
-                  value={targetId}
-                  onChange={(e) => setTargetId(e.target.value)}
-                  className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-xs text-slate-800 focus:border-[#2563EB] focus:outline-none"
-                  required
-                >
-                  {dispatchType === 'lecturer' ? (
-                    dispatchLecturers.length > 0 ? (
-                      dispatchLecturers.map((gv) => (
-                        <option key={gv.id} value={gv.id}>
-                          {gv.label}
-                        </option>
-                      ))
-                    ) : (
-                      <option value="" disabled>
-                        -- Chưa có Giảng viên trong Database --
-                      </option>
-                    )
+                {/* Thanh tìm kiếm và bộ lọc nhanh */}
+                <div className="flex items-center gap-2 mb-2.5">
+                  <div className="relative flex-1">
+                    <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400" />
+                    <input
+                      type="text"
+                      placeholder="Tìm kiếm cán bộ, giảng viên, phòng ban..."
+                      value={targetSearchTerm}
+                      onChange={(e) => setTargetSearchTerm(e.target.value)}
+                      className="w-full pl-8 pr-3 py-1.5 text-xs rounded-lg border border-slate-200 focus:border-[#2563EB] focus:outline-none"
+                    />
+                  </div>
+                  <div className="flex rounded-lg border border-slate-200 p-0.5 bg-slate-50 text-[11px] font-medium shrink-0">
+                    <button
+                      type="button"
+                      onClick={() => setDispatchTargetFilter('all')}
+                      className={`px-2 py-1 rounded-md transition-all ${
+                        dispatchTargetFilter === 'all' ? 'bg-white text-[#2563EB] font-bold shadow-xs' : 'text-slate-600'
+                      }`}
+                    >
+                      Tất cả
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setDispatchTargetFilter('lecturer')}
+                      className={`px-2 py-1 rounded-md transition-all ${
+                        dispatchTargetFilter === 'lecturer' ? 'bg-white text-[#2563EB] font-bold shadow-xs' : 'text-slate-600'
+                      }`}
+                    >
+                      Giảng viên ({dispatchLecturers.length})
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setDispatchTargetFilter('department')}
+                      className={`px-2 py-1 rounded-md transition-all ${
+                        dispatchTargetFilter === 'department' ? 'bg-white text-[#2563EB] font-bold shadow-xs' : 'text-slate-600'
+                      }`}
+                    >
+                      Phòng ban ({dispatchDepartments.length})
+                    </button>
+                  </div>
+                </div>
+
+                {/* Danh sách ứng viên có thể chọn */}
+                <div className="max-h-48 overflow-y-auto rounded-xl border border-slate-200 bg-slate-50/50 p-2 space-y-1.5">
+                  {filteredCandidates.length === 0 ? (
+                    <div className="py-6 text-center text-xs text-slate-400">
+                      Không tìm thấy nhân sự nào phù hợp với từ khóa.
+                    </div>
                   ) : (
-                    dispatchDepartments.length > 0 ? (
-                      dispatchDepartments.map((dept) => (
-                        <option key={dept.id} value={dept.id}>
-                          {dept.label}
-                        </option>
-                      ))
-                    ) : (
-                      <option value="" disabled>
-                        -- Chưa có Phòng ban trong Database --
-                      </option>
-                    )
+                    filteredCandidates.map((cand) => {
+                      const isSelected = selectedTargets.some((t) => t.id === cand.id);
+                      const selectedIndex = selectedTargets.findIndex((t) => t.id === cand.id);
+                      const isLecturer = cand.type === 'lecturer' || cand.donVi?.toLowerCase().includes('giảng viên');
+
+                      return (
+                        <div
+                          key={cand.id}
+                          onClick={() => handleToggleTarget(cand, cand.type)}
+                          className={`flex items-center justify-between p-2 rounded-lg cursor-pointer transition-colors ${
+                            isSelected
+                              ? 'bg-blue-50/90 border border-blue-200'
+                              : 'bg-white hover:bg-slate-100/70 border border-slate-100'
+                          }`}
+                        >
+                          <div className="flex items-center gap-2.5 min-w-0">
+                            <div className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-lg ${
+                              isLecturer ? 'bg-blue-100 text-[#2563EB]' : 'bg-emerald-100 text-emerald-700'
+                            }`}>
+                              {isLecturer ? <GraduationCap className="h-4 w-4" /> : <Building2 className="h-4 w-4" />}
+                            </div>
+                            <div className="min-w-0">
+                              <p className="font-bold text-xs text-slate-800 truncate">{cand.label || cand.name}</p>
+                              <p className="text-[10px] text-slate-500 truncate">{cand.email || cand.donVi}</p>
+                            </div>
+                          </div>
+
+                          <div className="flex items-center gap-2 shrink-0">
+                            {isSelected ? (
+                              <span className="flex items-center gap-1 rounded-full bg-blue-600 px-2 py-0.5 text-[10px] font-bold text-white shadow-xs">
+                                <Check className="h-3 w-3" />
+                                <span>Người ký #{selectedIndex + 1}</span>
+                              </span>
+                            ) : (
+                              <span className="rounded-lg border border-slate-300 px-2 py-0.5 text-[11px] text-slate-600 hover:border-blue-500 hover:text-blue-600">
+                                + Chọn
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })
                   )}
-                </select>
+                </div>
+
+                {/* Danh sách người ký đã chọn & Thứ tự ký */}
+                <div className="mt-3">
+                  <div className="text-[11px] font-bold text-slate-600 mb-1.5 flex items-center justify-between">
+                    <span>Thứ tự các cán bộ ký duyệt ({selectedTargets.length} người):</span>
+                    {selectedTargets.length > 0 && (
+                      <button
+                        type="button"
+                        onClick={() => setSelectedTargets([])}
+                        className="text-[10px] text-rose-500 hover:underline"
+                      >
+                        Bỏ chọn tất cả
+                      </button>
+                    )}
+                  </div>
+
+                  {selectedTargets.length === 0 ? (
+                    <div className="rounded-xl border border-dashed border-amber-300 bg-amber-50/60 p-3 text-center text-xs text-amber-800">
+                      ⚠️ Bạn chưa chọn người ký nào. Vui lòng bấm chọn ít nhất 1 người ở danh sách phía trên (tối đa 10 người).
+                    </div>
+                  ) : (
+                    <div className="space-y-1.5">
+                      {selectedTargets.map((item, idx) => (
+                        <div
+                          key={item.id}
+                          className="flex items-center justify-between rounded-xl border border-blue-200 bg-white px-3 py-2 text-xs shadow-xs"
+                        >
+                          <div className="flex items-center gap-2 min-w-0">
+                            <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-[#2563EB] text-[10px] font-bold text-white">
+                              {idx + 1}
+                            </span>
+                            <div className="min-w-0">
+                              <span className="font-bold text-slate-800">{item.name}</span>
+                              <span className="text-[11px] text-slate-500 ml-1.5">({item.donVi || item.role})</span>
+                            </div>
+                          </div>
+
+                          <div className="flex items-center gap-1 shrink-0">
+                            {idx > 0 && (
+                              <button
+                                type="button"
+                                onClick={() => handleMoveTarget(idx, -1)}
+                                className="p-1 text-slate-400 hover:text-slate-700"
+                                title="Đưa lên trên"
+                              >
+                                ↑
+                              </button>
+                            )}
+                            {idx < selectedTargets.length - 1 && (
+                              <button
+                                type="button"
+                                onClick={() => handleMoveTarget(idx, 1)}
+                                className="p-1 text-slate-400 hover:text-slate-700"
+                                title="Đưa xuống dưới"
+                              >
+                                ↓
+                              </button>
+                            )}
+                            <button
+                              type="button"
+                              onClick={() => handleRemoveTarget(item.id)}
+                              className="p-1 text-slate-400 hover:text-rose-600 rounded-md hover:bg-rose-50"
+                              title="Xóa người này"
+                            >
+                              <X className="h-3.5 w-3.5" />
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
               </div>
 
               <div className="grid grid-cols-2 gap-3">
@@ -2810,10 +3044,15 @@ export default function AdminDashboardPage({ user, logoSrc = DEFAULT_LOGO_SRC, o
                 </button>
                 <button
                   type="submit"
-                  className="flex items-center gap-1.5 rounded-xl bg-[#2563EB] px-5 py-2 text-xs font-semibold text-white hover:bg-blue-700 shadow-sm"
+                  disabled={selectedTargets.length === 0}
+                  className={`flex items-center gap-1.5 rounded-xl px-5 py-2 text-xs font-semibold text-white shadow-sm transition-all ${
+                    selectedTargets.length === 0
+                      ? 'bg-slate-300 cursor-not-allowed'
+                      : 'bg-[#2563EB] hover:bg-blue-700 cursor-pointer'
+                  }`}
                 >
                   <SendHorizontal className="h-4 w-4" />
-                  <span>Xác nhận phân phát</span>
+                  <span>Xác nhận phân phát ({selectedTargets.length} người)</span>
                 </button>
               </div>
             </form>
@@ -2859,15 +3098,65 @@ export default function AdminDashboardPage({ user, logoSrc = DEFAULT_LOGO_SRC, o
                 </div>
               </div>
 
-              {selectedRequest.assignedTo && (
-                <div className="rounded-xl border border-blue-200 bg-blue-50/50 p-4 space-y-1.5">
-                  <div className="text-xs font-bold text-blue-900 uppercase tracking-wider flex items-center gap-1.5">
-                    <Check className="h-3.5 w-3.5 text-blue-600" />
-                    Đơn vị đang thụ lý giải quyết
+              {(selectedRequest.assignedSigners?.length > 0 || selectedRequest.assignedTo) && (
+                <div className="rounded-xl border border-blue-200 bg-blue-50/50 p-4 space-y-2.5">
+                  <div className="text-xs font-bold text-blue-900 uppercase tracking-wider flex items-center justify-between">
+                    <div className="flex items-center gap-1.5">
+                      <Check className="h-3.5 w-3.5 text-blue-600" />
+                      <span>Cán bộ / Đơn vị tiếp nhận ({selectedRequest.assignedSigners?.length || 1} người)</span>
+                    </div>
+                    {selectedRequest.assignedSigners && selectedRequest.assignedSigners.length > 0 && (
+                      <span className="text-[11px] font-semibold text-blue-700 bg-blue-100 px-2 py-0.5 rounded-full">
+                        Tiến độ: {selectedRequest.assignedSigners.filter((s) => s.status === 'signed').length}/{selectedRequest.assignedSigners.length} đã ký
+                      </span>
+                    )}
                   </div>
-                  <div className="text-sm font-bold text-slate-800">{selectedRequest.assignedTo.displayName || selectedRequest.assignedTo.name}</div>
-                  <div className="text-xs text-slate-600">Ghi chú: "{selectedRequest.assignedTo.note}"</div>
-                  <div className="text-xs text-blue-700 font-medium">Hạn xử lý: {selectedRequest.assignedTo.deadline}</div>
+
+                  {selectedRequest.assignedSigners && selectedRequest.assignedSigners.length > 0 ? (
+                    <div className="space-y-2 divide-y divide-blue-100/80">
+                      {selectedRequest.assignedSigners.map((signer, sIdx) => (
+                        <div key={signer.id || sIdx} className="pt-2 first:pt-0 flex items-center justify-between text-xs">
+                          <div className="flex items-center gap-2">
+                            <span className="flex h-5 w-5 items-center justify-center rounded-full bg-blue-200 text-[10px] font-bold text-blue-800">
+                              {sIdx + 1}
+                            </span>
+                            <div>
+                              <p className="font-bold text-slate-800">{signer.displayName || signer.name}</p>
+                              <p className="text-[10px] text-slate-500">{signer.donVi || signer.role}</p>
+                            </div>
+                          </div>
+                          <div>
+                            {signer.status === 'signed' ? (
+                              <div className="flex items-center gap-1.5 text-emerald-600 font-semibold text-[11px]">
+                                <CheckCircle2 className="h-3.5 w-3.5" />
+                                <span>Đã ký ({signer.signedAt || 'Đã duyệt'})</span>
+                              </div>
+                            ) : (
+                              <div className="flex items-center gap-1 text-amber-600 font-medium text-[11px]">
+                                <Clock className="h-3.5 w-3.5" />
+                                <span>Chờ ký</span>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="text-sm font-bold text-slate-800">
+                      {selectedRequest.assignedTo?.displayName || selectedRequest.assignedTo?.name}
+                    </div>
+                  )}
+
+                  {selectedRequest.assignedTo?.note && (
+                    <div className="text-xs text-slate-600 pt-1 border-t border-blue-100">
+                      Ghi chú: "{selectedRequest.assignedTo.note}"
+                    </div>
+                  )}
+                  {selectedRequest.assignedTo?.deadline && (
+                    <div className="text-xs text-blue-700 font-medium">
+                      Hạn xử lý: {selectedRequest.assignedTo.deadline}
+                    </div>
+                  )}
                 </div>
               )}
 

@@ -305,6 +305,20 @@ export function analyzeDocumentStructure(rawText, defaultFileName = '') {
     }
   }
 
+  // Nhận diện mã biểu mẫu (Form Code) và phiên bản (Revision) ở đầu văn bản (ví dụ: 04.26-BM/CTSV/APC.)
+  let detectedFormCode = '';
+  let detectedFormRevision = '';
+  for (const line of lines.slice(0, 15)) {
+    const codeMatch = line.match(/(\d{1,3}\.\d{1,3}-BM\/[A-Za-z0-9/._-]+|BM\/[A-Za-z0-9/._-]+|[A-Za-z0-9._-]+-BM\/[A-Za-z0-9/._-]+)/i);
+    if (codeMatch && !detectedFormCode) {
+      detectedFormCode = codeMatch[1].trim();
+    }
+    const revMatch = line.match(/(?:Lần ban hành(?:\/sửa đổi)?|Ban hành|Sửa đổi|Phiên bản)\s*[:/]\s*([0-9/]+)/i);
+    if (revMatch && !detectedFormRevision) {
+      detectedFormRevision = `Lần ban hành/sửa đổi: ${revMatch[1]}`;
+    }
+  }
+
   // Nếu chưa tìm thấy bằng từ khóa ĐƠN/GIẤY, tìm dòng viết hoa đầu tiên ở đầu văn bản (bỏ qua quốc hiệu)
   if (!detectedTitle) {
     for (let i = 0; i < Math.min(lines.length, 12); i++) {
@@ -326,6 +340,14 @@ export function analyzeDocumentStructure(rawText, defaultFileName = '') {
       .replace(/[-_]/g, ' ')
       .trim();
     detectedTitle = detectedTitle.charAt(0).toUpperCase() + detectedTitle.slice(1);
+  }
+
+  // Nhận diện đơn xin cấp bảng điểm học tập (chuẩn hóa tiếng Việt NFD/NFC)
+  const normTitle = normalizeVietnameseText(detectedTitle || defaultFileName);
+  const isTranscriptDoc = normTitle.includes('bang diem') || normTitle.includes('transcript');
+  if (isTranscriptDoc) {
+    if (!detectedFormCode) detectedFormCode = '04.26-BM/CTSV/APC.';
+    if (!detectedFormRevision) detectedFormRevision = 'Lần ban hành/sửa đổi: 1/0';
   }
 
   // 2. Nhận diện Đơn vị xử lý (Kính gửi: ...)
@@ -419,8 +441,21 @@ export function analyzeDocumentStructure(rawText, defaultFileName = '') {
     }
   }
 
-  // 5. Nếu trong file không đề cập trực tiếp CMS fields, mặc định hệ thống vẫn liên kết bộ trường chuẩn
-  if (detectedCmsFields.length === 0) {
+  // 5. Nếu là đơn bảng điểm, thiết lập bộ 7 trường CMS chuẩn theo mẫu Word gốc
+  if (isTranscriptDoc) {
+    detectedCmsFields.length = 0;
+    detectedCmsFields.push(
+      { key: 'fullName', label: 'Họ và tên', cmsKey: 'hoTen' },
+      { key: 'studentCode', label: 'Mã số sinh viên', cmsKey: 'maSinhVien' },
+      { key: 'dob', label: 'Ngày sinh', cmsKey: 'ngaySinh' },
+      { key: 'phone', label: 'Số điện thoại', cmsKey: 'sdt' },
+      { key: 'className', label: 'Hiện đang học lớp', cmsKey: 'lop' },
+      { key: 'major', label: 'Ngành', cmsKey: 'nganh' },
+      { key: 'cohort', label: 'Khóa', cmsKey: 'khoaHoc' }
+    );
+    customFields.length = 0;
+  } else if (detectedCmsFields.length === 0) {
+    // Nếu trong file không đề cập trực tiếp CMS fields, mặc định hệ thống liên kết bộ trường cơ bản
     detectedCmsFields.push(
       { key: 'fullName', label: 'Họ và tên', cmsKey: 'hoTen' },
       { key: 'studentCode', label: 'Mã số sinh viên', cmsKey: 'maSinhVien' },
@@ -434,6 +469,9 @@ export function analyzeDocumentStructure(rawText, defaultFileName = '') {
     title: detectedTitle || 'Đơn đề nghị mới',
     department: detectedDepartment,
     category: detectedCategory,
+    formCode: detectedFormCode || null,
+    formRevision: detectedFormRevision || null,
+    formType: isTranscriptDoc ? 'transcript' : 'standard',
     cmsFields: detectedCmsFields,
     customFields,
     rawText,

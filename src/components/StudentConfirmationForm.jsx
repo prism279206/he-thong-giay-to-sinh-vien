@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useMemo } from 'react';
 import {
   ArrowLeft,
   Printer,
@@ -15,7 +15,7 @@ import {
   Sparkles,
 } from 'lucide-react';
 import logoCdvm from '../assets/images/logocđvm.jpg';
-import { submitRequest } from '../services/requestService';
+import { submitRequest, isTranscriptType } from '../services/requestService';
 import { getStudentProfile, formatCccd } from '../services/cmsService';
 import { triggerPrintClean } from '../utils/printHelper';
 
@@ -124,8 +124,35 @@ function processSignatureImage(imgElement, threshold = 205, inkColorMode = 'blue
  * - Chữ ký sinh viên: Tích hợp trực tiếp ô ký tay hoặc tải ảnh chữ ký tự động tách nền ngay trong form.
  */
 function StudentConfirmationForm({ onBack, user, requestType }) {
+  const isTranscript = isTranscriptType(requestType);
+
+  // Kiểm tra danh mục các trường thông tin cá nhân CMS mà mẫu đơn này thực sự yêu cầu
+  const reqCmsKeys = useMemo(() => {
+    if (requestType?.cmsFields && Array.isArray(requestType.cmsFields) && requestType.cmsFields.length > 0) {
+      return new Set(requestType.cmsFields.map((f) => (typeof f === 'string' ? f : f.key)));
+    }
+    return null; // Không giới hạn cụ thể -> hiển thị đầy đủ theo mẫu chuẩn
+  }, [requestType?.cmsFields]);
+
+  // Các cờ ẩn/hiện trường thông tin tương ứng với mẫu đơn
+  const showCccdFields = !isTranscript && (!reqCmsKeys || reqCmsKeys.has('idCardNumber') || reqCmsKeys.has('idCardDate') || reqCmsKeys.has('idCardPlace'));
+  const showPobField = !isTranscript && (!reqCmsKeys || reqCmsKeys.has('pob'));
+  const showCampusField = !isTranscript && (!reqCmsKeys || reqCmsKeys.has('campus'));
+  const showTrainingSystemField = !isTranscript && (!reqCmsKeys || reqCmsKeys.has('trainingSystem'));
+
   const [formData, setFormData] = useState(() => getStudentCmsData(user));
   const [currentDateText] = useState(getFormattedCurrentDate);
+
+  // Tùy chọn riêng của Đơn xin cấp bảng điểm học tập
+  const [transcriptType, setTranscriptType] = useState('full_course'); // 'full_course' | 'academic_year' | 'by_semester'
+  const [transcriptYear, setTranscriptYear] = useState('2024 - 2025');
+  const [transcriptFromSemester, setTranscriptFromSemester] = useState('1');
+  const [transcriptFromYear, setTranscriptFromYear] = useState('2024 - 2025');
+  const [transcriptToSemester, setTranscriptToSemester] = useState('2');
+  const [transcriptToYear, setTranscriptToYear] = useState('2024 - 2025');
+
+  // Modal thông báo hoàn tất nộp đơn ở giữa màn hình
+  const [showSuccessModal, setShowSuccessModal] = useState(false);
 
   // Lưu trữ giá trị cho các trường câu hỏi riêng biệt theo loại đơn (bóc tách từ file Word)
   const [customFieldValues, setCustomFieldValues] = useState(() => {
@@ -328,10 +355,28 @@ function StudentConfirmationForm({ onBack, user, requestType }) {
 
     const newRequestPayload = {
       id: newRequestId,
-      typeId: requestType?.id || 'rt-confirm-student',
-      typeName: requestType?.name || 'Đơn xin cấp xác nhận học sinh – sinh viên',
-      typeCategory: requestType?.category || 'Xác nhận học tập',
-      departmentName: requestType?.departmentName || 'Phòng Đào tạo & Quản lý Khoa học',
+      typeId: requestType?.id || (isTranscript ? 'rt-transcript' : 'rt-confirm-student'),
+      typeName: requestType?.name || (isTranscript ? 'Đơn xin cấp bảng điểm học tập' : 'Đơn xin cấp xác nhận học sinh – sinh viên'),
+      typeCategory: requestType?.category || (isTranscript ? 'Học vụ & Đào tạo' : 'Xác nhận học tập'),
+      departmentName: requestType?.departmentName || (isTranscript ? 'Phòng Đào tạo' : 'Phòng Đào tạo & Quản lý Khoa học'),
+      formCode: isTranscript ? (requestType?.formCode || '04.26-BM/CTSV/APC.') : (requestType?.formCode || null),
+      formRevision: isTranscript ? (requestType?.formRevision || 'Lần ban hành/sửa đổi: 1/0') : (requestType?.formRevision || null),
+      transcriptType: isTranscript ? transcriptType : null,
+      transcriptYear: isTranscript && transcriptType === 'academic_year' ? transcriptYear : null,
+      transcriptFromSemester: isTranscript && transcriptType === 'by_semester' ? transcriptFromSemester : null,
+      transcriptFromYear: isTranscript && transcriptType === 'by_semester' ? transcriptFromYear : null,
+      transcriptToSemester: isTranscript && transcriptType === 'by_semester' ? transcriptToSemester : null,
+      transcriptToYear: isTranscript && transcriptType === 'by_semester' ? transcriptToYear : null,
+      transcriptOptions: isTranscript
+        ? {
+            type: transcriptType,
+            year: transcriptYear,
+            fromSemester: transcriptFromSemester,
+            fromYear: transcriptFromYear,
+            toSemester: transcriptToSemester,
+            toYear: transcriptToYear,
+          }
+        : null,
       studentId: user?.id || null,
       studentName: formData.fullName.trim(),
       studentCode: formData.studentCode.trim(),
@@ -371,10 +416,7 @@ function StudentConfirmationForm({ onBack, user, requestType }) {
     setIsSubmitting(true);
     try {
       await submitRequest(newRequestPayload);
-      alert(
-        `Đã nộp ${requestType?.name || 'đơn'} thành công (Mã đơn: ${newRequestId})!\n\nDữ liệu đơn kèm chữ ký của bạn đã được chuyển tới Quản trị viên (Admin) để thẩm định và phân phối tới Giảng viên/Phòng ban.`
-      );
-      if (onBack) onBack();
+      setShowSuccessModal(true);
     } catch (err) {
       console.error('Lỗi khi nộp đơn:', err);
       alert('Có lỗi xảy ra khi gửi đơn: ' + (err.message || 'Vui lòng thử lại.'));
@@ -514,7 +556,7 @@ function StudentConfirmationForm({ onBack, user, requestType }) {
                   />
                 </div>
 
-                <div>
+                <div className={isTranscript ? 'sm:col-span-2' : ''}>
                   <label className="block text-xs font-medium text-slate-600">Ngày sinh</label>
                   <input
                     type="text"
@@ -525,55 +567,62 @@ function StudentConfirmationForm({ onBack, user, requestType }) {
                   />
                 </div>
 
-                <div>
-                  <label className="block text-xs font-medium text-slate-600">Nơi sinh (Tỉnh/TP)</label>
-                  <input
-                    type="text"
-                    value={formData.pob}
-                    onChange={(e) => handleChange('pob', e.target.value)}
-                    className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-800 focus:border-[#2563EB] focus:outline-none"
-                  />
-                </div>
+                {/* Các trường Nơi sinh & CCCD được hiển thị thông minh theo mẫu đơn */}
+                {showPobField && (
+                  <div>
+                    <label className="block text-xs font-medium text-slate-600">Nơi sinh (Tỉnh/TP)</label>
+                    <input
+                      type="text"
+                      value={formData.pob}
+                      onChange={(e) => handleChange('pob', e.target.value)}
+                      className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-800 focus:border-[#2563EB] focus:outline-none"
+                    />
+                  </div>
+                )}
 
-                <div>
-                  <label className="block text-xs font-medium text-slate-600">Số CCCD</label>
-                  <input
-                    type="text"
-                    value={formData.idCardNumber}
-                    placeholder="12 chữ số CCCD"
-                    maxLength={12}
-                    onChange={(e) => handleChange('idCardNumber', e.target.value)}
-                    onBlur={() => {
-                      if (formData.idCardNumber) {
-                        handleChange('idCardNumber', formatCccd(formData.idCardNumber));
-                      }
-                    }}
-                    className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-800 focus:border-[#2563EB] focus:outline-none"
-                  />
-                </div>
+                {showCccdFields && (
+                  <>
+                    <div>
+                      <label className="block text-xs font-medium text-slate-600">Số CCCD</label>
+                      <input
+                        type="text"
+                        value={formData.idCardNumber}
+                        placeholder="12 chữ số CCCD"
+                        maxLength={12}
+                        onChange={(e) => handleChange('idCardNumber', e.target.value)}
+                        onBlur={() => {
+                          if (formData.idCardNumber) {
+                            handleChange('idCardNumber', formatCccd(formData.idCardNumber));
+                          }
+                        }}
+                        className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-800 focus:border-[#2563EB] focus:outline-none"
+                      />
+                    </div>
 
-                <div>
-                  <label className="block text-xs font-medium text-slate-600">Ngày cấp CCCD</label>
-                  <input
-                    type="text"
-                    value={formData.idCardDate}
-                    placeholder="DD/MM/YYYY"
-                    onChange={(e) => handleChange('idCardDate', e.target.value)}
-                    className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-800 focus:border-[#2563EB] focus:outline-none"
-                  />
-                </div>
+                    <div>
+                      <label className="block text-xs font-medium text-slate-600">Ngày cấp CCCD</label>
+                      <input
+                        type="text"
+                        value={formData.idCardDate}
+                        placeholder="DD/MM/YYYY"
+                        onChange={(e) => handleChange('idCardDate', e.target.value)}
+                        className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-800 focus:border-[#2563EB] focus:outline-none"
+                      />
+                    </div>
 
-                <div className="sm:col-span-2">
-                  <label className="block text-xs font-medium text-slate-600">
-                    Nơi cấp CCCD (mặc định Bộ Công an)
-                  </label>
-                  <input
-                    type="text"
-                    value={formData.idCardPlace}
-                    onChange={(e) => handleChange('idCardPlace', e.target.value)}
-                    className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-800 focus:border-[#2563EB] focus:outline-none"
-                  />
-                </div>
+                    <div className="sm:col-span-2">
+                      <label className="block text-xs font-medium text-slate-600">
+                        Nơi cấp CCCD (mặc định Bộ Công an)
+                      </label>
+                      <input
+                        type="text"
+                        value={formData.idCardPlace}
+                        onChange={(e) => handleChange('idCardPlace', e.target.value)}
+                        className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-800 focus:border-[#2563EB] focus:outline-none"
+                      />
+                    </div>
+                  </>
+                )}
               </div>
             </div>
 
@@ -585,7 +634,7 @@ function StudentConfirmationForm({ onBack, user, requestType }) {
 
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 <div>
-                  <label className="block text-xs font-medium text-slate-600">Lớp</label>
+                  <label className="block text-xs font-medium text-slate-600">Hiện đang học lớp</label>
                   <input
                     type="text"
                     value={formData.className}
@@ -595,7 +644,7 @@ function StudentConfirmationForm({ onBack, user, requestType }) {
                 </div>
 
                 <div>
-                  <label className="block text-xs font-medium text-slate-600">Chuyên ngành</label>
+                  <label className="block text-xs font-medium text-slate-600">Ngành / Chuyên ngành</label>
                   <input
                     type="text"
                     value={formData.major}
@@ -604,7 +653,7 @@ function StudentConfirmationForm({ onBack, user, requestType }) {
                   />
                 </div>
 
-                <div>
+                <div className={isTranscript ? 'sm:col-span-2' : ''}>
                   <label className="block text-xs font-medium text-slate-600">Khóa</label>
                   <input
                     type="text"
@@ -614,43 +663,47 @@ function StudentConfirmationForm({ onBack, user, requestType }) {
                   />
                 </div>
 
-                <div>
-                  <label className="block text-xs font-medium text-slate-600">Hệ đào tạo</label>
-                  <input
-                    type="text"
-                    value={formData.trainingSystem}
-                    onChange={(e) => handleChange('trainingSystem', e.target.value)}
-                    className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-800 focus:border-[#2563EB] focus:outline-none"
-                  />
-                </div>
-
-                {/* Chọn cơ sở học tập */}
-                <div className="sm:col-span-2">
-                  <label className="block text-xs font-medium text-slate-600 mb-1.5">
-                    Cơ sở học tập
-                  </label>
-                  <div className="grid grid-cols-2 gap-2 text-xs">
-                    {CAMPUS_OPTIONS.map((item) => (
-                      <label
-                        key={item}
-                        className={`flex cursor-pointer items-center gap-2 rounded-xl border p-2.5 transition-all ${
-                          formData.campus === item
-                            ? 'border-[#2563EB] bg-blue-50/70 font-semibold text-[#2563EB]'
-                            : 'border-slate-200 text-slate-600 hover:bg-slate-50'
-                        }`}
-                      >
-                        <input
-                          type="radio"
-                          name="campus"
-                          checked={formData.campus === item}
-                          onChange={() => handleChange('campus', item)}
-                          className="text-[#2563EB] focus:ring-[#2563EB]"
-                        />
-                        <span>{item}</span>
-                      </label>
-                    ))}
+                {/* Hệ đào tạo & Cơ sở học tập chỉ hiện khi mẫu đơn có yêu cầu */}
+                {showTrainingSystemField && (
+                  <div>
+                    <label className="block text-xs font-medium text-slate-600">Hệ đào tạo</label>
+                    <input
+                      type="text"
+                      value={formData.trainingSystem}
+                      onChange={(e) => handleChange('trainingSystem', e.target.value)}
+                      className="mt-1 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-800 focus:border-[#2563EB] focus:outline-none"
+                    />
                   </div>
-                </div>
+                )}
+
+                {showCampusField && (
+                  <div className="sm:col-span-2">
+                    <label className="block text-xs font-medium text-slate-600 mb-1.5">
+                      Cơ sở học tập
+                    </label>
+                    <div className="grid grid-cols-2 gap-2 text-xs">
+                      {CAMPUS_OPTIONS.map((item) => (
+                        <label
+                          key={item}
+                          className={`flex cursor-pointer items-center gap-2 rounded-xl border p-2.5 transition-all ${
+                            formData.campus === item
+                              ? 'border-[#2563EB] bg-blue-50/70 font-semibold text-[#2563EB]'
+                              : 'border-slate-200 text-slate-600 hover:bg-slate-50'
+                          }`}
+                        >
+                          <input
+                            type="radio"
+                            name="campus"
+                            checked={formData.campus === item}
+                            onChange={() => handleChange('campus', item)}
+                            className="text-[#2563EB] focus:ring-[#2563EB]"
+                          />
+                          <span>{item}</span>
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
 
@@ -658,13 +711,156 @@ function StudentConfirmationForm({ onBack, user, requestType }) {
             <div className="space-y-3 pt-3 border-t border-slate-100">
               <div className="flex items-center justify-between">
                 <h3 className="text-xs font-bold tracking-wider text-slate-800 uppercase">
-                  {requestType?.fields && requestType.fields.length > 0
+                  {isTranscript
+                    ? '3. Nội dung xin cấp bảng điểm & Lý do'
+                    : requestType?.fields && requestType.fields.length > 0
                     ? '3. Nội dung đề nghị & Lý do làm đơn'
                     : '3. Lý do đề nghị cấp giấy'}
                   <span className="text-red-500"> *</span>
                 </h3>
                 <span className="text-[11px] text-slate-400">Bắt buộc</span>
               </div>
+
+              {/* TÙY CHỌN RIÊNG DÀNH CHO ĐƠN XIN CẤP BẢNG ĐIỂM */}
+              {isTranscript && (
+                <div className="space-y-3 rounded-2xl border border-slate-200 bg-slate-50/70 p-3.5 mb-2">
+                  <label className="block text-xs font-bold text-slate-700">
+                    Loại bảng điểm đề nghị cấp <span className="text-red-500">*</span>:
+                  </label>
+                  <div className="space-y-2 text-xs">
+                    {/* Option 1: Toàn khóa */}
+                    <label
+                      className={`flex cursor-pointer items-center gap-2.5 rounded-xl border p-2.5 transition-all ${
+                        transcriptType === 'full_course'
+                          ? 'border-[#2563EB] bg-blue-50/70 font-semibold text-[#2563EB]'
+                          : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'
+                      }`}
+                    >
+                      <input
+                        type="radio"
+                        name="transcriptType"
+                        value="full_course"
+                        checked={transcriptType === 'full_course'}
+                        onChange={() => setTranscriptType('full_course')}
+                        className="text-[#2563EB] focus:ring-[#2563EB]"
+                      />
+                      <span>Cấp bảng điểm toàn khóa</span>
+                    </label>
+
+                    {/* Option 2: Theo năm học */}
+                    <div
+                      className={`rounded-xl border p-2.5 transition-all ${
+                        transcriptType === 'academic_year'
+                          ? 'border-[#2563EB] bg-blue-50/70 text-[#2563EB]'
+                          : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'
+                      }`}
+                    >
+                      <label className="flex cursor-pointer items-center gap-2.5 font-semibold">
+                        <input
+                          type="radio"
+                          name="transcriptType"
+                          value="academic_year"
+                          checked={transcriptType === 'academic_year'}
+                          onChange={() => setTranscriptType('academic_year')}
+                          className="text-[#2563EB] focus:ring-[#2563EB]"
+                        />
+                        <span>Theo năm học</span>
+                      </label>
+                      {transcriptType === 'academic_year' && (
+                        <div className="mt-2.5 pl-6">
+                          <label className="block text-[11px] font-medium text-slate-600 mb-1">
+                            Nhập năm học cần cấp:
+                          </label>
+                          <input
+                            type="text"
+                            value={transcriptYear}
+                            onChange={(e) => setTranscriptYear(e.target.value)}
+                            placeholder="Ví dụ: 2024 - 2025"
+                            className="w-full rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs text-slate-800 focus:border-[#2563EB] focus:outline-none"
+                          />
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Option 3: Theo từng học kỳ */}
+                    <div
+                      className={`rounded-xl border p-2.5 transition-all ${
+                        transcriptType === 'by_semester'
+                          ? 'border-[#2563EB] bg-blue-50/70 text-[#2563EB]'
+                          : 'border-slate-200 bg-white text-slate-700 hover:bg-slate-50'
+                      }`}
+                    >
+                      <label className="flex cursor-pointer items-center gap-2.5 font-semibold">
+                        <input
+                          type="radio"
+                          name="transcriptType"
+                          value="by_semester"
+                          checked={transcriptType === 'by_semester'}
+                          onChange={() => setTranscriptType('by_semester')}
+                          className="text-[#2563EB] focus:ring-[#2563EB]"
+                        />
+                        <span>Theo từng học kỳ</span>
+                      </label>
+                      {transcriptType === 'by_semester' && (
+                        <div className="mt-2.5 space-y-2 pl-6">
+                          <div className="grid grid-cols-2 gap-2">
+                            <div>
+                              <label className="block text-[11px] font-medium text-slate-600 mb-0.5">
+                                Từ học kỳ:
+                              </label>
+                              <input
+                                type="text"
+                                value={transcriptFromSemester}
+                                onChange={(e) => setTranscriptFromSemester(e.target.value)}
+                                placeholder="1"
+                                className="w-full rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-xs text-slate-800 focus:border-[#2563EB] focus:outline-none"
+                              />
+                            </div>
+                            <div>
+                              <label className="block text-[11px] font-medium text-slate-600 mb-0.5">
+                                Năm học:
+                              </label>
+                              <input
+                                type="text"
+                                value={transcriptFromYear}
+                                onChange={(e) => setTranscriptFromYear(e.target.value)}
+                                placeholder="2024 - 2025"
+                                className="w-full rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-xs text-slate-800 focus:border-[#2563EB] focus:outline-none"
+                              />
+                            </div>
+                          </div>
+                          <div className="grid grid-cols-2 gap-2">
+                            <div>
+                              <label className="block text-[11px] font-medium text-slate-600 mb-0.5">
+                                Đến học kỳ:
+                              </label>
+                              <input
+                                type="text"
+                                value={transcriptToSemester}
+                                onChange={(e) => setTranscriptToSemester(e.target.value)}
+                                placeholder="2"
+                                className="w-full rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-xs text-slate-800 focus:border-[#2563EB] focus:outline-none"
+                              />
+                            </div>
+                            <div>
+                              <label className="block text-[11px] font-medium text-slate-600 mb-0.5">
+                                Năm học:
+                              </label>
+                              <input
+                                type="text"
+                                value={transcriptToYear}
+                                onChange={(e) => setTranscriptToYear(e.target.value)}
+                                placeholder="2024 - 2025"
+                                className="w-full rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-xs text-slate-800 focus:border-[#2563EB] focus:outline-none"
+                              />
+                            </div>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              )}
 
               {/* Nếu đơn có các mục câu hỏi riêng (ví dụ môn thi, ca thi) */}
               {requestType?.fields && requestType.fields.length > 0 && (
@@ -737,16 +933,18 @@ function StudentConfirmationForm({ onBack, user, requestType }) {
 
               {/* Ô lý do làm đơn */}
               <div>
-                {requestType?.fields && requestType.fields.length > 0 && (
-                  <label className="block text-xs font-semibold text-slate-700 mb-1">
-                    Lý do / Nguyện vọng cụ thể: <span className="text-red-500">*</span>
-                  </label>
-                )}
+                <label className="block text-xs font-semibold text-slate-700 mb-1">
+                  {isTranscript ? 'Lý do xin cấp bảng điểm:' : 'Lý do đề nghị cấp giấy:'} <span className="text-red-500">*</span>
+                </label>
                 <textarea
                   rows={3}
                   value={formData.reason}
                   onChange={(e) => handleChange('reason', e.target.value)}
-                  placeholder="Nhập lý do cụ thể cần làm đơn (ví dụ: Vay vốn ngân hàng chính sách, tạm hoãn nghĩa vụ quân sự, nộp hồ sơ xin việc...)"
+                  placeholder={
+                    isTranscript
+                      ? 'Nhập lý do xin cấp bảng điểm (ví dụ: Nộp hồ sơ xin việc, học chuyển tiếp, bổ túc hồ sơ cá nhân...)'
+                      : 'Nhập lý do cụ thể cần làm đơn (ví dụ: Vay vốn ngân hàng chính sách, tạm hoãn nghĩa vụ quân sự, nộp hồ sơ xin việc...)'
+                  }
                   className="w-full rounded-xl border border-slate-200 bg-white p-3 text-sm text-slate-800 focus:border-[#2563EB] focus:outline-none"
                   required
                 />
@@ -968,220 +1166,469 @@ function StudentConfirmationForm({ onBack, user, requestType }) {
               minHeight: '850px',
             }}
           >
-            {/* Header trên cùng */}
-            <div className="border-t-2 border-black pt-3">
-              <div className="flex items-start justify-between gap-4">
-                {/* Logo trường góc trái */}
-                <div className="flex flex-col items-center">
-                  <img
-                    src={logoCdvm}
-                    alt="Logo Trường Cao đẳng Việt Mỹ Hà Nội"
-                    className="h-16 w-auto max-w-[170px] object-contain sm:h-20"
-                  />
+            {/* ================= HEADER TRÊN CÙNG ================= */}
+            {isTranscript ? (
+              <div>
+                {/* Dòng mã biểu mẫu chuẩn mẫu gốc Word: 04.26-BM/CTSV/APC. | Lần ban hành/sửa đổi: 1/0 */}
+                <div className="flex items-center justify-between border-t border-b border-black py-0.5 text-[11pt]">
+                  <span className="font-normal">{requestType?.formCode || '04.26-BM/CTSV/APC.'}</span>
+                  <span className="font-normal">{requestType?.formRevision || 'Lần ban hành/sửa đổi: 1/0'}</span>
                 </div>
 
-                {/* Quốc hiệu góc phải - Chuẩn Times New Roman 12.5pt - 13.5pt */}
-                <div className="text-center" style={{ fontFamily: '"Times New Roman", Times, serif' }}>
-                  <p className="text-[12.5pt] font-bold tracking-tight uppercase">
-                    CỘNG HÒA XÃ HỘI CHỦ NGHĨA VIỆT NAM
-                  </p>
-                  <p className="text-[13.5pt] font-bold">
-                    Độc lập – Tự do – Hạnh phúc
-                  </p>
-                  <div className="mx-auto mt-1 h-[1px] w-36 bg-black" />
+                <div className="mt-3 flex items-start justify-between gap-4">
+                  {/* Logo trường góc trái */}
+                  <div className="flex flex-col items-center">
+                    <img
+                      src={logoCdvm}
+                      alt="Logo Trường Cao đẳng Việt Mỹ Hà Nội"
+                      className="h-16 w-auto max-w-[170px] object-contain sm:h-20"
+                    />
+                  </div>
+
+                  {/* Quốc hiệu góc phải - Chuẩn Times New Roman 12.5pt - 13.5pt */}
+                  <div className="text-center flex-1 max-w-[360px]" style={{ fontFamily: '"Times New Roman", Times, serif' }}>
+                    <p className="text-[12.5pt] font-bold tracking-tight uppercase">
+                      CỘNG HÒA XÃ HỘI CHỦ NGHĨA VIỆT NAM
+                    </p>
+                    <p className="text-[13.5pt] font-bold">Độc lập – Tự do – Hạnh phúc</p>
+                    <div className="mx-auto mt-1 h-[1px] w-36 bg-black" />
+                  </div>
+
+                  {/* Ô vuông nhỏ góc trên bên phải (khớp 100% mẫu Word gốc) */}
+                  <div className="h-11 w-9 border border-black flex items-center justify-center text-[10pt] text-slate-300 select-none">
+                    {/* Ô trống theo biểu mẫu */}
+                  </div>
                 </div>
               </div>
-            </div>
+            ) : (
+              <div className="border-t-2 border-black pt-3">
+                <div className="flex items-start justify-between gap-4">
+                  {/* Logo trường góc trái */}
+                  <div className="flex flex-col items-center">
+                    <img
+                      src={logoCdvm}
+                      alt="Logo Trường Cao đẳng Việt Mỹ Hà Nội"
+                      className="h-16 w-auto max-w-[170px] object-contain sm:h-20"
+                    />
+                  </div>
 
-            {/* Tiêu đề Đơn - Chuẩn 16pt - 17pt */}
-            <div className="mt-8 mb-6 text-center">
+                  {/* Quốc hiệu góc phải - Chuẩn Times New Roman 12.5pt - 13.5pt */}
+                  <div className="text-center" style={{ fontFamily: '"Times New Roman", Times, serif' }}>
+                    <p className="text-[12.5pt] font-bold tracking-tight uppercase">
+                      CỘNG HÒA XÃ HỘI CHỦ NGHĨA VIỆT NAM
+                    </p>
+                    <p className="text-[13.5pt] font-bold">
+                      Độc lập – Tự do – Hạnh phúc
+                    </p>
+                    <div className="mx-auto mt-1 h-[1px] w-36 bg-black" />
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* ================= TIÊU ĐỀ ĐƠN ================= */}
+            <div className="mt-7 mb-5 text-center">
               <h2 className="text-[16pt] font-bold tracking-wide uppercase sm:text-[17pt]">
-                {requestType?.name ? requestType.name.toUpperCase() : 'ĐƠN XIN CẤP XÁC NHẬN HỌC SINH – SINH VIÊN'}
+                {requestType?.name ? requestType.name.toUpperCase() : 'ĐƠN XIN CẤP BẢNG ĐIỂM HỌC TẬP'}
               </h2>
             </div>
 
-            {/* Kính gửi - Chuẩn 13.5pt - 14pt */}
-            <div className="space-y-1 pl-4 sm:pl-8 text-[13.5pt]">
-              <div className="flex items-baseline gap-2">
-                <span className="font-bold whitespace-nowrap">Kính gửi:</span>
-                <span>- Ban Giám hiệu Trường Cao đẳng Việt Mỹ Hà Nội</span>
+            {/* ================= KÍNH GỬI ================= */}
+            {isTranscript ? (
+              <div className="space-y-0.5 pl-6 sm:pl-12 text-[13.5pt]">
+                <div className="flex items-baseline gap-2">
+                  <span className="font-bold whitespace-nowrap">Kính gửi:</span>
+                  <span>Phòng Đào tạo</span>
+                </div>
+                <p className="pl-16">Bộ phận khảo thí</p>
               </div>
-              <p className="pl-16">- {requestType?.departmentName || 'Phòng Đào tạo & Quản lý Khoa học'}</p>
-              <p className="pl-16">- Phòng Công tác Sinh viên</p>
-            </div>
-
-            {/* Thân đơn - Chuẩn 13.5pt */}
-            <div className="mt-6 space-y-2.5 text-[13.5pt]">
-              <div className="flex flex-wrap items-baseline gap-x-6 gap-y-1">
-                <div className="flex-1 min-w-[200px]">
-                  <span>Em tên là: </span>
-                  <span className="font-bold">{formData.fullName || '................................'}</span>
+            ) : (
+              <div className="space-y-1 pl-4 sm:pl-8 text-[13.5pt]">
+                <div className="flex items-baseline gap-2">
+                  <span className="font-bold whitespace-nowrap">Kính gửi:</span>
+                  <span>- Ban Giám hiệu Trường Cao đẳng Việt Mỹ Hà Nội</span>
                 </div>
-                <div>
-                  <span>Mã số sinh viên: </span>
-                  <span className="font-bold">{formData.studentCode || '....................'}</span>
-                </div>
+                <p className="pl-16">- {requestType?.departmentName || 'Phòng Đào tạo & Quản lý Khoa học'}</p>
+                <p className="pl-16">- Phòng Công tác Sinh viên</p>
               </div>
+            )}
 
-              <div>
-                <span>SĐT sinh viên: </span>
-                <span>{formData.phone || '................................................................'}</span>
-              </div>
-
-              <div className="flex flex-wrap items-baseline gap-x-6 gap-y-1">
-                <div className="flex-1 min-w-[180px]">
-                  <span>Ngày sinh: </span>
-                  <span>{formData.dob || '....................'}</span>
-                </div>
+            {/* ================= THÂN ĐƠN ================= */}
+            {isTranscript ? (
+              /* THÂN ĐƠN XIN CẤP BẢNG ĐIỂM HỌC TẬP (Khớp 100% mẫu Word gốc) */
+              <div className="mt-5 space-y-2 text-[13.5pt]">
+                {/* Họ và tên */}
                 <div>
-                  <span>Nơi sinh: </span>
-                  <span>{formData.pob || '................................'}</span>
-                </div>
-              </div>
-
-              <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1">
-                <div>
-                  <span>Số CCCD: </span>
-                  <span>{formData.idCardNumber || '....................'}</span>
-                </div>
-                <div>
-                  <span>Ngày cấp: </span>
-                  <span>{formData.idCardDate || '....................'}</span>
-                </div>
-                <div>
-                  <span>Nơi cấp: </span>
-                  <span>{formData.idCardPlace || '....................'}</span>
-                </div>
-              </div>
-
-              <div className="flex flex-wrap items-baseline gap-x-6 gap-y-1">
-                <div className="flex-1 min-w-[180px]">
-                  <span>Hiện là sinh viên lớp: </span>
-                  <span className="font-bold">{formData.className || '....................'}</span>
-                </div>
-                <div>
-                  <span>Chuyên ngành: </span>
-                  <span className="font-bold">{formData.major || '................................'}</span>
-                </div>
-              </div>
-
-              {/* Cơ sở học tập checkbox */}
-              <div className="flex flex-wrap items-center gap-x-4 gap-y-1 pt-1">
-                <span>Cơ sở học tập:</span>
-                {CAMPUS_OPTIONS.map((item) => (
-                  <span key={item} className="inline-flex items-center gap-1.5 whitespace-nowrap">
-                    <span>{item}</span>
-                    <span className="inline-flex h-4 w-4 items-center justify-center border border-black text-[12pt] font-bold">
-                      {formData.campus === item ? '✓' : ''}
-                    </span>
+                  <span>Họ và tên: </span>
+                  <span className="font-bold">
+                    {formData.fullName || '..........................................................................................'}
                   </span>
-                ))}
-              </div>
-
-              <div className="pt-1">
-                <span>Khóa: </span>
-                <span className="font-bold">{formData.academicYear || '................'}</span>
-                <span className="ml-3">Hệ đào tạo: </span>
-                <span className="font-bold">{formData.trainingSystem || '................'}</span>
-                <span> tại Trường Cao đẳng Việt Mỹ Hà Nội</span>
-              </div>
-
-              {/* Nếu đơn có các mục câu hỏi riêng (ví dụ môn thi, ca thi) */}
-              {requestType?.fields && requestType.fields.length > 0 && (
-                <div className="pt-2 space-y-1 text-[13.5pt]">
-                  {requestType.fields.map((f) => (
-                    <div key={f.id} className="flex flex-wrap items-baseline gap-x-2">
-                      <span>- {f.label}:</span>
-                      <span className={customFieldValues[f.id] ? 'font-bold' : 'italic text-slate-500'}>
-                        {customFieldValues[f.id] || '................................................................'}
-                      </span>
-                    </div>
-                  ))}
                 </div>
-              )}
 
-              {/* Lý do đề nghị cấp giấy / bổ sung */}
-              <div className="pt-2">
-                <p>
-                  Em làm đơn này kính đề nghị nhà trường{' '}
-                  {requestType?.name ? `xem xét và giải quyết ${requestType.name.toLowerCase()}` : 'cấp giấy xác nhận HSSV'}{' '}
-                  với lý do:
-                </p>
-                {formData.reason ? (
-                  <p className="mt-1 min-h-[40px] text-justify italic">
-                    {formData.reason}
-                  </p>
-                ) : (!requestType?.fields || requestType.fields.length === 0) ? (
-                  <div className="space-y-2 pt-1">
-                    <div className="border-b border-dotted border-black/70 h-4"></div>
-                    <div className="border-b border-dotted border-black/70 h-4"></div>
-                    <div className="border-b border-dotted border-black/70 h-4"></div>
-                    <div className="border-b border-dotted border-black/70 h-4"></div>
+                {/* Ngày sinh & SĐT */}
+                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                  <div>
+                    <span>Ngày sinh: </span>
+                    <span>{formData.dob || '......................................'}</span>
                   </div>
-                ) : null}
+                  <div>
+                    <span>SĐT: </span>
+                    <span>{formData.phone || '...........................................'}</span>
+                  </div>
+                </div>
+
+                {/* Mã sinh viên & Hiện đang học lớp */}
+                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                  <div>
+                    <span>Mã sinh viên: </span>
+                    <span className="font-bold">{formData.studentCode || '..................................'}</span>
+                  </div>
+                  <div>
+                    <span>Hiện đang học lớp: </span>
+                    <span className="font-bold">{formData.className || '.............................'}</span>
+                  </div>
+                </div>
+
+                {/* Ngành & Khóa */}
+                <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+                  <div>
+                    <span>Ngành: </span>
+                    <span className="font-bold">{formData.major || '.........................................'}</span>
+                  </div>
+                  <div>
+                    <span>Khóa: </span>
+                    <span className="font-bold">{formData.academicYear || '..........................................'}</span>
+                  </div>
+                </div>
+
+                {/* Tùy chọn bảng điểm */}
+                <div className="pt-3 space-y-1.5">
+                  <p>Nay em làm đơn này gửi đến quý Phòng Ban chức năng xin được cấp bảng điểm:</p>
+
+                  {/* 1. Toàn khóa */}
+                  <div className="flex items-center gap-2.5 pl-4">
+                    <span className="inline-flex h-4 w-4 items-center justify-center border border-black text-[12pt] font-bold">
+                      {transcriptType === 'full_course' ? '✓' : ''}
+                    </span>
+                    <span>Toàn khóa</span>
+                  </div>
+
+                  {/* 2. Năm học */}
+                  <div className="flex items-center gap-2.5 pl-4">
+                    <span className="inline-flex h-4 w-4 items-center justify-center border border-black text-[12pt] font-bold">
+                      {transcriptType === 'academic_year' ? '✓' : ''}
+                    </span>
+                    <span>
+                      Năm học:{' '}
+                      {transcriptType === 'academic_year' && transcriptYear ? (
+                        <span className="font-bold underline decoration-dotted">{transcriptYear}</span>
+                      ) : (
+                        '......................................'
+                      )}
+                    </span>
+                  </div>
+
+                  {/* 3. Từ học kỳ... đến học kỳ... */}
+                  <div className="flex items-baseline gap-2.5 pl-4">
+                    <span className="inline-flex h-4 w-4 items-center justify-center border border-black text-[12pt] font-bold shrink-0 self-center">
+                      {transcriptType === 'by_semester' ? '✓' : ''}
+                    </span>
+                    <span>
+                      Từ học kỳ:{' '}
+                      {transcriptType === 'by_semester' && transcriptFromSemester ? (
+                        <span className="font-bold underline decoration-dotted">{transcriptFromSemester}</span>
+                      ) : (
+                        '......'
+                      )}{' '}
+                      năm học:{' '}
+                      {transcriptType === 'by_semester' && transcriptFromYear ? (
+                        <span className="font-bold underline decoration-dotted">{transcriptFromYear}</span>
+                      ) : (
+                        '...........'
+                      )}{' '}
+                      đến học kỳ:{' '}
+                      {transcriptType === 'by_semester' && transcriptToSemester ? (
+                        <span className="font-bold underline decoration-dotted">{transcriptToSemester}</span>
+                      ) : (
+                        '......'
+                      )}{' '}
+                      năm học:{' '}
+                      {transcriptType === 'by_semester' && transcriptToYear ? (
+                        <span className="font-bold underline decoration-dotted">{transcriptToYear}</span>
+                      ) : (
+                        '...........'
+                      )}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Lý do xin cấp bảng điểm */}
+                <div className="pt-3">
+                  <p className="font-bold">Lý do xin cấp bảng điểm:</p>
+                  {formData.reason ? (
+                    <p className="mt-1 min-h-[35px] text-justify italic indent-6 bg-transparent text-black">
+                      {formData.reason}
+                    </p>
+                  ) : (
+                    <div className="space-y-2 pt-1">
+                      <div className="border-b border-dotted border-black/70 h-4"></div>
+                      <div className="border-b border-dotted border-black/70 h-4"></div>
+                    </div>
+                  )}
+                </div>
+
+                <p className="pt-1">Em xin chân thành cảm ơn!</p>
               </div>
+            ) : (
+              /* THÂN ĐƠN XIN CẤP XÁC NHẬN HỌC SINH - SINH VIÊN */
+              <div className="mt-6 space-y-2.5 text-[13.5pt]">
+                <div className="flex flex-wrap items-baseline gap-x-6 gap-y-1">
+                  <div className="flex-1 min-w-[200px]">
+                    <span>Em tên là: </span>
+                    <span className="font-bold">{formData.fullName || '................................'}</span>
+                  </div>
+                  <div>
+                    <span>Mã số sinh viên: </span>
+                    <span className="font-bold">{formData.studentCode || '....................'}</span>
+                  </div>
+                </div>
 
-              {/* Lời cam đoan */}
-              <p className="pt-2 text-justify indent-8">
-                Em xin cam đoan các thông tin đã khai trên là hoàn toàn chính xác và sử dụng giấy tờ đúng mục đích. Nếu vi phạm, em xin hoàn toàn chịu trách nhiệm trước quy định của Nhà trường và pháp luật.
-              </p>
-              <p>Em xin trân thành cảm ơn!</p>
-            </div>
+                <div>
+                  <span>SĐT sinh viên: </span>
+                  <span>{formData.phone || '................................................................'}</span>
+                </div>
 
-            {/* Chân trang chữ ký */}
-            <div className="mt-8 pt-2">
-              <div className="text-right italic text-[13.5pt] pr-2">{currentDateText}</div>
+                <div className="flex flex-wrap items-baseline gap-x-6 gap-y-1">
+                  <div className="flex-1 min-w-[180px]">
+                    <span>Ngày sinh: </span>
+                    <span>{formData.dob || '....................'}</span>
+                  </div>
+                  {showPobField && (
+                    <div>
+                      <span>Nơi sinh: </span>
+                      <span>{formData.pob || '................................'}</span>
+                    </div>
+                  )}
+                </div>
 
-              <div className="mt-4 grid grid-cols-2 text-center">
-                {/* Cột chữ ký GVCN: Để trống theo yêu cầu đối với sinh viên */}
-                <div className="flex flex-col items-center">
-                  <p className="font-bold text-[14pt]">Chữ ký GVCN</p>
-                  <p className="text-[12pt] italic text-slate-700">(Ký và ghi rõ họ tên)</p>
+                {showCccdFields && (
+                  <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1">
+                    <div>
+                      <span>Số CCCD: </span>
+                      <span>{formData.idCardNumber || '....................'}</span>
+                    </div>
+                    <div>
+                      <span>Ngày cấp: </span>
+                      <span>{formData.idCardDate || '....................'}</span>
+                    </div>
+                    <div>
+                      <span>Nơi cấp: </span>
+                      <span>{formData.idCardPlace || '....................'}</span>
+                    </div>
+                  </div>
+                )}
 
-                  <div className="my-2 flex h-24 w-full items-center justify-center">
-                    {teacherSignature ? (
-                      teacherSignature.startsWith('data:image') || teacherSignature.startsWith('http') ? (
+                <div className="flex flex-wrap items-baseline gap-x-6 gap-y-1">
+                  <div className="flex-1 min-w-[180px]">
+                    <span>Hiện là sinh viên lớp: </span>
+                    <span className="font-bold">{formData.className || '....................'}</span>
+                  </div>
+                  <div>
+                    <span>Chuyên ngành: </span>
+                    <span className="font-bold">{formData.major || '................................'}</span>
+                  </div>
+                </div>
+
+                {/* Cơ sở học tập checkbox */}
+                {showCampusField && (
+                  <div className="flex flex-wrap items-center gap-x-4 gap-y-1 pt-1">
+                    <span>Cơ sở học tập:</span>
+                    {CAMPUS_OPTIONS.map((item) => (
+                      <span key={item} className="inline-flex items-center gap-1.5 whitespace-nowrap">
+                        <span>{item}</span>
+                        <span className="inline-flex h-4 w-4 items-center justify-center border border-black text-[12pt] font-bold">
+                          {formData.campus === item ? '✓' : ''}
+                        </span>
+                      </span>
+                    ))}
+                  </div>
+                )}
+
+                <div className="pt-1">
+                  <span>Khóa: </span>
+                  <span className="font-bold">{formData.academicYear || '................'}</span>
+                  {showTrainingSystemField && (
+                    <>
+                      <span className="ml-3">Hệ đào tạo: </span>
+                      <span className="font-bold">{formData.trainingSystem || '................'}</span>
+                    </>
+                  )}
+                  <span> tại Trường Cao đẳng Việt Mỹ Hà Nội</span>
+                </div>
+
+                {/* Nếu đơn có các mục câu hỏi riêng (ví dụ môn thi, ca thi) */}
+                {requestType?.fields && requestType.fields.length > 0 && (
+                  <div className="pt-2 space-y-1 text-[13.5pt]">
+                    {requestType.fields.map((f) => (
+                      <div key={f.id} className="flex flex-wrap items-baseline gap-x-2">
+                        <span>- {f.label}:</span>
+                        <span className={customFieldValues[f.id] ? 'font-bold' : 'italic text-slate-500'}>
+                          {customFieldValues[f.id] || '................................................................'}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* Lý do đề nghị cấp giấy / bổ sung */}
+                <div className="pt-2">
+                  <p>
+                    Em làm đơn này kính đề nghị nhà trường{' '}
+                    {requestType?.name ? `xem xét và giải quyết ${requestType.name.toLowerCase()}` : 'cấp giấy xác nhận HSSV'}{' '}
+                    với lý do:
+                  </p>
+                  {formData.reason ? (
+                    <p className="mt-1 min-h-[40px] text-justify italic">
+                      {formData.reason}
+                    </p>
+                  ) : (!requestType?.fields || requestType.fields.length === 0) ? (
+                    <div className="space-y-2 pt-1">
+                      <div className="border-b border-dotted border-black/70 h-4"></div>
+                      <div className="border-b border-dotted border-black/70 h-4"></div>
+                      <div className="border-b border-dotted border-black/70 h-4"></div>
+                      <div className="border-b border-dotted border-black/70 h-4"></div>
+                    </div>
+                  ) : null}
+                </div>
+
+                {/* Lời cam đoan */}
+                <p className="pt-2 text-justify indent-8">
+                  Em xin cam đoan các thông tin đã khai trên là hoàn toàn chính xác và sử dụng giấy tờ đúng mục đích. Nếu vi phạm, em xin hoàn toàn chịu trách nhiệm trước quy định của Nhà trường và pháp luật.
+                </p>
+                <p>Em xin chân thành cảm ơn!</p>
+              </div>
+            )}
+
+            {/* ================= CHÂN TRANG CHỮ KÝ ================= */}
+            {isTranscript ? (
+              /* CHỮ KÝ ĐƠN XIN CẤP BẢNG ĐIỂM (3 vị trí xác nhận) */
+              <div className="mt-8 pt-2">
+                <div className="text-right italic text-[13.5pt] pr-2">{currentDateText}</div>
+
+                {/* Hàng chữ ký 1: Xác nhận của GVCN & Người làm đơn */}
+                <div className="mt-4 grid grid-cols-2 text-center">
+                  {/* Cột chữ ký GVCN: Để trống theo yêu cầu đối với sinh viên */}
+                  <div className="flex flex-col items-center">
+                    <p className="font-bold text-[14pt]">Xác nhận của GVCN</p>
+
+                    <div className="my-2 flex h-24 w-full items-center justify-center">
+                      {teacherSignature ? (
+                        teacherSignature.startsWith('data:image') || teacherSignature.startsWith('http') ? (
+                          <img
+                            src={teacherSignature}
+                            alt="Chữ ký GVCN"
+                            className="max-h-16 max-w-[140px] object-contain"
+                          />
+                        ) : (
+                          <div className="rounded-lg border border-purple-200 bg-purple-50/70 p-2 text-center text-xs font-semibold text-purple-800">
+                            <span>{teacherSignature}</span>
+                          </div>
+                        )
+                      ) : (
+                        <div className="h-20 w-full" />
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Cột chữ ký Người làm đơn */}
+                  <div className="flex flex-col items-center">
+                    <p className="font-bold text-[14pt]">Người làm đơn</p>
+                    <p className="text-[12pt] italic text-slate-700">(Ký, ghi rõ họ tên)</p>
+
+                    <div className="my-2 flex h-24 w-full items-center justify-center">
+                      {studentSignature ? (
                         <img
-                          src={teacherSignature}
-                          alt="Chữ ký GVCN"
+                          src={studentSignature}
+                          alt="Chữ ký sinh viên"
                           className="max-h-20 max-w-[150px] object-contain"
                         />
                       ) : (
-                        <div className="rounded-lg border border-purple-200 bg-purple-50/70 p-2 text-center text-xs font-semibold text-purple-800">
-                          <span>{teacherSignature}</span>
-                        </div>
-                      )
-                    ) : (
-                      // Để trống hoàn toàn cho sinh viên như mẫu văn bản gốc
-                      <div className="h-20 w-full" />
-                    )}
+                        <div className="h-20 w-full" />
+                      )}
+                    </div>
+
+                    <p className="font-bold text-slate-900 text-[14pt]">
+                      {formData.fullName || '...........................'}
+                    </p>
                   </div>
                 </div>
 
-                {/* Cột chữ ký Người làm đơn */}
-                <div className="flex flex-col items-center">
-                  <p className="font-bold text-[14pt]">Người làm đơn</p>
-                  <p className="text-[12pt] italic text-slate-700">(Chữ ký, ghi rõ họ tên)</p>
-
-                  <div className="my-2 flex h-24 w-full items-center justify-center">
-                    {studentSignature ? (
-                      <img
-                        src={studentSignature}
-                        alt="Chữ ký sinh viên"
-                        className="max-h-20 max-w-[150px] object-contain"
-                      />
-                    ) : (
-                      // Nếu chưa ký thì để trống như trên giấy trắng
-                      <div className="h-20 w-full" />
-                    )}
+                {/* Hàng chữ ký 2: Xác nhận Bộ phận khảo thí (bên trái) */}
+                <div className="mt-8 pl-6 sm:pl-10">
+                  <div className="inline-block text-center min-w-[220px]">
+                    <p className="font-bold text-[14pt]">Xác nhận Bộ phận khảo thí</p>
+                    <div className="my-2 h-16 w-full flex items-center justify-center text-xs text-slate-300 italic font-sans">
+                      (Bộ phận khảo thí ký xác nhận)
+                    </div>
                   </div>
-
-                  <p className="font-bold text-slate-900 text-[14pt]">
-                    {formData.fullName || '...........................'}
-                  </p>
                 </div>
               </div>
-            </div>
+            ) : (
+              /* CHỮ KÝ ĐƠN XÁC NHẬN HSSV (2 cột) */
+              <div className="mt-8 pt-2">
+                <div className="text-right italic text-[13.5pt] pr-2">{currentDateText}</div>
+
+                <div className="mt-4 grid grid-cols-2 text-center">
+                  {/* Cột chữ ký GVCN: Để trống theo yêu cầu đối với sinh viên */}
+                  <div className="flex flex-col items-center">
+                    <p className="font-bold text-[14pt]">Chữ ký GVCN</p>
+                    <p className="text-[12pt] italic text-slate-700">(Ký và ghi rõ họ tên)</p>
+
+                    <div className="my-2 flex h-24 w-full items-center justify-center">
+                      {teacherSignature ? (
+                        teacherSignature.startsWith('data:image') || teacherSignature.startsWith('http') ? (
+                          <img
+                            src={teacherSignature}
+                            alt="Chữ ký GVCN"
+                            className="max-h-20 max-w-[150px] object-contain"
+                          />
+                        ) : (
+                          <div className="rounded-lg border border-purple-200 bg-purple-50/70 p-2 text-center text-xs font-semibold text-purple-800">
+                            <span>{teacherSignature}</span>
+                          </div>
+                        )
+                      ) : (
+                        // Để trống hoàn toàn cho sinh viên như mẫu văn bản gốc
+                        <div className="h-20 w-full" />
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Cột chữ ký Người làm đơn */}
+                  <div className="flex flex-col items-center">
+                    <p className="font-bold text-[14pt]">Người làm đơn</p>
+                    <p className="text-[12pt] italic text-slate-700">(Chữ ký, ghi rõ họ tên)</p>
+
+                    <div className="my-2 flex h-24 w-full items-center justify-center">
+                      {studentSignature ? (
+                        <img
+                          src={studentSignature}
+                          alt="Chữ ký sinh viên"
+                          className="max-h-20 max-w-[150px] object-contain"
+                        />
+                      ) : (
+                        // Nếu chưa ký thì để trống như trên giấy trắng
+                        <div className="h-20 w-full" />
+                      )}
+                    </div>
+
+                    <p className="font-bold text-slate-900 text-[14pt]">
+                      {formData.fullName || '...........................'}
+                    </p>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       </div>
@@ -1227,6 +1674,92 @@ function StudentConfirmationForm({ onBack, user, requestType }) {
           }
         }
       `}</style>
+
+      {/* Modal thông báo hoàn tất nộp đơn ở giữa màn hình (Dấu tick trắng trong vòng tròn xanh lá có animation) */}
+      {showSuccessModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4 animate-in fade-in duration-200">
+          <div className="relative w-full max-w-sm rounded-3xl bg-white p-6 sm:p-8 text-center shadow-2xl border border-slate-100 flex flex-col items-center">
+            {/* Vòng tròn màu xanh lá kèm dấu tích trắng animation */}
+            <div
+              className="relative mb-4 flex h-20 w-20 items-center justify-center rounded-full bg-emerald-500 shadow-xl shadow-emerald-500/30"
+              style={{
+                animation: 'popScale 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards',
+              }}
+            >
+              <svg
+                className="h-10 w-10 text-white"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="3.5"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
+                <path
+                  d="M5 13l4 4L19 7"
+                  style={{
+                    strokeDasharray: 30,
+                    strokeDashoffset: 30,
+                    animation: 'drawCheck 0.55s cubic-bezier(0.65, 0, 0.45, 1) forwards 0.2s',
+                  }}
+                />
+              </svg>
+            </div>
+
+            {/* Nội dung thông báo đúng yêu cầu của người dùng */}
+            <h3 className="text-xl font-bold text-slate-800 tracking-tight sm:text-2xl">
+              Đã hoàn tất nộp đơn
+            </h3>
+
+            <p className="mt-2 text-xs sm:text-sm text-slate-500 leading-relaxed">
+              Hồ sơ của bạn đã được gửi thành công đến Ban Quản trị để tiếp nhận và phân phối xử lý.
+            </p>
+
+            {/* Nút xác nhận đóng và trở về */}
+            <button
+              type="button"
+              onClick={() => {
+                setShowSuccessModal(false);
+                if (onBack) onBack();
+              }}
+              className="mt-6 w-full cursor-pointer rounded-xl bg-emerald-600 py-3 text-sm font-semibold text-white shadow-md shadow-emerald-600/20 transition-all hover:bg-emerald-700 active:scale-[0.99]"
+            >
+              Xác nhận
+            </button>
+
+            {/* Keyframes animation cho vòng tròn xanh và dấu tích vẽ tay */}
+            <style>{`
+              @keyframes popScale {
+                0% {
+                  transform: scale(0);
+                  opacity: 0;
+                }
+                65% {
+                  transform: scale(1.18);
+                  opacity: 1;
+                }
+                100% {
+                  transform: scale(1);
+                  opacity: 1;
+                }
+              }
+              @keyframes drawCheck {
+                0% {
+                  stroke-dashoffset: 30;
+                  opacity: 0;
+                }
+                40% {
+                  opacity: 1;
+                }
+                100% {
+                  stroke-dashoffset: 0;
+                  opacity: 1;
+                }
+              }
+            `}</style>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

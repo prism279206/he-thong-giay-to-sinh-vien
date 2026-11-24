@@ -139,12 +139,38 @@ export function deleteStoredRequest(requestId) {
 }
 
 /**
- * Cán bộ Quản trị viên phân phát đơn tới GV hoặc Phòng ban
+ * Cán bộ Quản trị viên phân phát đơn tới các GV / Phòng ban (Hỗ trợ từ 1 đến 10 người)
  */
-export function dispatchRequestByAdmin(requestId, assignedInfo, urgency, deadline, note) {
+export function dispatchRequestByAdmin(requestId, assignedInfoOrList, urgency, deadline, note) {
   const currentList = getStoredRequests();
   const now = new Date();
   const timeStr = `${String(now.getDate()).padStart(2, '0')}/${String(now.getMonth() + 1).padStart(2, '0')}/${now.getFullYear()} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+
+  const rawList = Array.isArray(assignedInfoOrList)
+    ? assignedInfoOrList.slice(0, 10)
+    : [assignedInfoOrList];
+
+  const assignedSigners = rawList.map((item, idx) => ({
+    id: item.id || `signer_${idx + 1}`,
+    name: item.name || item.fullName || 'Cán bộ xử lý',
+    role: item.role || 'staff',
+    email: item.email || '',
+    faculty: item.faculty || item.donVi || '',
+    donVi: item.donVi || item.faculty || item.department || '',
+    department: item.department || item.donVi || item.faculty || '',
+    displayName: item.displayName || item.label || item.name,
+    type: item.type || (item.role === 'teacher' ? 'lecturer' : 'department'),
+    order: idx + 1,
+    status: item.status || 'pending',
+    signedAt: item.signedAt || null,
+    signatureUrl: item.signatureUrl || null,
+    signedBy: item.signedBy || null,
+    deadline: deadline || item.deadline || 'Trong 48 giờ',
+    note: note || item.note || '',
+  }));
+
+  const primaryTarget = assignedSigners[0] || null;
+  const signerNames = assignedSigners.map((s) => s.displayName || s.name).join(', ');
 
   let targetReq = null;
   const updated = currentList.map((req) => {
@@ -153,26 +179,21 @@ export function dispatchRequestByAdmin(requestId, assignedInfo, urgency, deadlin
       const newLogs = [
         ...(req.logs || []),
         {
-          action: 'Tiếp nhận & Phân phát',
+          action: `Phân phát tới ${assignedSigners.length} người ký: ${signerNames}`,
           actor: 'Quản trị viên',
           time: timeStr,
-          note: `Chuyển đơn tới ${assignedInfo.displayName || assignedInfo.name}. Ghi chú: ${note || 'Không có'}`,
+          note: `Chuyển đơn tới: ${signerNames}. Ghi chú: ${note || 'Không có'}`,
         },
       ];
 
       return {
         ...req,
         status: 'in_progress',
-        statusLabel: 'Đang xử lý',
+        statusLabel: `Đang xử lý (Chờ ${assignedSigners.length} cán bộ ký)`,
         distributionStatus: 'assigned',
         urgency: urgency || req.urgency,
-        assignedTo: {
-          ...assignedInfo,
-          assignedAt: timeStr,
-          assignedBy: 'Quản trị viên',
-          note: note || '',
-          deadline: deadline || 'Trong 48 giờ',
-        },
+        assignedTo: primaryTarget,
+        assignedSigners: assignedSigners,
         logs: newLogs,
       };
     }
@@ -182,13 +203,16 @@ export function dispatchRequestByAdmin(requestId, assignedInfo, urgency, deadlin
   saveStoredRequests(updated);
 
   if (targetReq) {
-    // Thông báo cho Giảng viên
-    addNotification({
-      recipient: assignedInfo.id || 'teacher',
-      title: 'Hồ sơ mới được phân công duyệt',
-      body: `Quản trị viên đã chuyển đơn ${requestId} (${targetReq.typeName}) của SV ${targetReq.studentName} đến bạn.`,
-      message: `Quản trị viên đã chuyển đơn ${requestId} (${targetReq.typeName}) của SV ${targetReq.studentName} đến bạn. Hạn xử lý: ${deadline || 'Trong 48 giờ'}.`,
-      requestId,
+    // Thông báo cho từng Cán bộ / Giảng viên được phân công
+    assignedSigners.forEach((signer) => {
+      const recipient = signer.email || signer.id || 'teacher';
+      addNotification({
+        recipient: recipient,
+        title: 'Hồ sơ mới được phân công duyệt',
+        body: `Quản trị viên đã chuyển đơn ${requestId} (${targetReq.typeName}) của SV ${targetReq.studentName} đến bạn để ký duyệt.`,
+        message: `Quản trị viên đã chuyển đơn ${requestId} (${targetReq.typeName}) của SV ${targetReq.studentName} đến bạn để ký duyệt. Hạn xử lý: ${deadline || 'Trong 48 giờ'}.`,
+        requestId,
+      });
     });
 
     // Thông báo cập nhật tiến độ cho Sinh viên
@@ -196,8 +220,8 @@ export function dispatchRequestByAdmin(requestId, assignedInfo, urgency, deadlin
       recipient: targetReq.studentCode,
       studentCode: targetReq.studentCode,
       title: 'Đơn đang được xử lý',
-      body: `Đơn ${requestId} của bạn đã được Quản trị viên chuyển tới ${assignedInfo.name} để thẩm định và phê duyệt.`,
-      message: `Đơn ${requestId} của bạn đã được Quản trị viên chuyển tới ${assignedInfo.name} để thẩm định và phê duyệt.`,
+      body: `Đơn ${requestId} của bạn đã được Quản trị viên chuyển tới ${signerNames} để thẩm định và phê duyệt.`,
+      message: `Đơn ${requestId} của bạn đã được Quản trị viên chuyển tới ${signerNames} để thẩm định và phê duyệt.`,
       requestId,
     });
   }
@@ -277,13 +301,31 @@ export function getStoredNotifications(recipient) {
       return list.filter((n) => n.recipient === 'admin');
     }
 
-    if (recipient === 'teacher' || (typeof recipient === 'string' && recipient.startsWith('GV'))) {
-      return list.filter(
-        (n) => n.recipient === recipient || n.recipient === 'teacher' || (n.recipient && n.recipient.startsWith('GV'))
-      );
+    // Nếu recipient là đối tượng người dùng hoặc chuỗi
+    let rEmail = '';
+    let rId = '';
+    let rName = '';
+    if (typeof recipient === 'object' && recipient !== null) {
+      rEmail = (recipient.email || '').toLowerCase().trim();
+      rId = (recipient.staffCode || recipient.teacherCode || recipient.code || recipient.id || '').toLowerCase().trim();
+      rName = (recipient.fullName || recipient.name || '').toLowerCase().trim();
+    } else if (typeof recipient === 'string') {
+      const s = recipient.toLowerCase().trim();
+      if (s.includes('@')) rEmail = s;
+      else rId = s;
     }
 
-    return list.filter((n) => n.recipient === recipient || n.studentCode === recipient);
+    return list.filter((n) => {
+      const nRecip = (n.recipient || '').toLowerCase().trim();
+      if (rEmail && nRecip === rEmail) return true;
+      if (rId && nRecip === rId) return true;
+      if (rName && nRecip === rName) return true;
+      if (n.studentCode && (n.studentCode.toLowerCase().trim() === rId || n.studentCode.toLowerCase().trim() === rEmail)) return true;
+      if ((rId.startsWith('gv') || rId.startsWith('kt') || rEmail.includes('huong.do') || rEmail.includes('luan.dam') || rEmail.includes('dung.dinh')) && (nRecip === 'teacher' || nRecip.startsWith('gv'))) {
+        return true;
+      }
+      return false;
+    });
   } catch {
     return INITIAL_NOTIFICATIONS;
   }
@@ -369,17 +411,18 @@ export function markAllNotificationsAsRead(recipient) {
 }
 
 /**
- * Giảng viên / Cán bộ ký duyệt đơn:
- * Theo quy trình: GV ký duyệt xong CHƯA trả về SV luôn,
- * mà chuyển trạng thái "teacher_approved" và gửi về Ban Quản trị viên.
+ * Giảng viên / Cán bộ ký duyệt đơn (Hỗ trợ nhiều người ký, tối đa 10 người)
  */
-export function signAndApproveByTeacher(requestId, teacherInfoOrSig, signatureOrTeacherName) {
+export function signAndApproveByTeacher(requestId, teacherInfoOrSig, signatureOrTeacherName, signerDetails = null) {
   const currentList = getStoredRequests();
   const now = new Date();
   const timeStr = `${String(now.getDate()).padStart(2, '0')}/${String(now.getMonth() + 1).padStart(2, '0')}/${now.getFullYear()} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
 
   let sigToUse = DEFAULT_TEACHER_SIGNATURE;
   let teacherName = 'Đỗ Thị Hương';
+  let signerEmail = signerDetails?.email || '';
+  let signerId = signerDetails?.id || signerDetails?.staffCode || '';
+  let signerDept = signerDetails?.department || signerDetails?.donVi || '';
 
   if (typeof teacherInfoOrSig === 'string' && teacherInfoOrSig.startsWith('data:image')) {
     sigToUse = teacherInfoOrSig;
@@ -390,6 +433,9 @@ export function signAndApproveByTeacher(requestId, teacherInfoOrSig, signatureOr
     }
   } else if (typeof teacherInfoOrSig === 'object' && teacherInfoOrSig !== null) {
     teacherName = teacherInfoOrSig.name || teacherName;
+    signerEmail = teacherInfoOrSig.email || signerEmail;
+    signerId = teacherInfoOrSig.id || teacherInfoOrSig.code || signerId;
+    signerDept = teacherInfoOrSig.donVi || teacherInfoOrSig.department || signerDept;
     if (signatureOrTeacherName) sigToUse = signatureOrTeacherName;
   } else if (typeof teacherInfoOrSig === 'string') {
     teacherName = teacherInfoOrSig;
@@ -401,27 +447,106 @@ export function signAndApproveByTeacher(requestId, teacherInfoOrSig, signatureOr
   }
 
   let targetReq = null;
+  let allSigned = false;
+  let signedCount = 0;
+  let totalSigners = 1;
+
   const updated = currentList.map((req) => {
     if (req.id === requestId) {
       targetReq = req;
+
+      let signers = Array.isArray(req.assignedSigners) && req.assignedSigners.length > 0
+        ? [...req.assignedSigners]
+        : [];
+
+      // Tìm vị trí của người ký trong danh sách assignedSigners
+      let matchedIndex = -1;
+      if (signers.length > 0) {
+        if (signerEmail) {
+          matchedIndex = signers.findIndex(
+            (s) => s.email && s.email.toLowerCase() === signerEmail.toLowerCase() && s.status !== 'signed'
+          );
+        }
+        if (matchedIndex === -1 && signerId) {
+          matchedIndex = signers.findIndex(
+            (s) => s.id === signerId && s.status !== 'signed'
+          );
+        }
+        if (matchedIndex === -1 && teacherName) {
+          matchedIndex = signers.findIndex(
+            (s) => s.name && s.name.trim().toLowerCase() === teacherName.trim().toLowerCase() && s.status !== 'signed'
+          );
+        }
+        // Nếu không khớp trực tiếp, lấy người đầu tiên chưa ký
+        if (matchedIndex === -1) {
+          matchedIndex = signers.findIndex((s) => s.status !== 'signed');
+        }
+
+        if (matchedIndex !== -1) {
+          signers[matchedIndex] = {
+            ...signers[matchedIndex],
+            status: 'signed',
+            signedAt: timeStr,
+            signatureUrl: sigToUse,
+            signedBy: teacherName,
+          };
+        }
+      }
+
+      signedCount = signers.filter((s) => s.status === 'signed').length;
+      totalSigners = signers.length > 0 ? signers.length : 1;
+      allSigned = signers.length > 0 ? signedCount === totalSigners : true;
+
+      const deptLower = (signerDept || signers[matchedIndex]?.department || '').toLowerCase();
+      const isKhaoThi =
+        deptLower.includes('khảo thí') ||
+        teacherName.toLowerCase().includes('dung') ||
+        (req.typeName && req.typeName.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/đ/g, 'd').includes('bang diem') && deptLower.includes('khảo thí'));
+
+      const isGvcn =
+        !isKhaoThi ||
+        deptLower.includes('giảng viên') ||
+        teacherName.toLowerCase().includes('luận') ||
+        teacherName.toLowerCase().includes('hương');
+
       const newLogs = [
         ...(req.logs || []),
         {
-          action: 'GVCN ký duyệt & Chuyển Quản trị viên',
-          actor: `GVCN ${teacherName}`,
+          action: `${teacherName} ký duyệt đơn`,
+          actor: teacherName,
           time: timeStr,
-          note: `GVCN (${teacherName}) đã ký số xác nhận hợp lệ. Đã chuyển hồ sơ về Quản trị viên để kiểm tra và xác nhận hoàn tất cho sinh viên.`,
+          note: `${teacherName} (${signerDept || 'Cán bộ'}) đã ký số xác nhận (${signedCount}/${totalSigners} cán bộ đã duyệt).`,
+        },
+      ];
+
+      const newSignatures = [
+        ...(req.signatures || []),
+        {
+          signerId: signerId || signers[matchedIndex]?.id,
+          signerName: teacherName,
+          signatureUrl: sigToUse,
+          signedAt: timeStr,
+          role: signers[matchedIndex]?.role || 'staff',
+          department: signerDept || signers[matchedIndex]?.department || '',
         },
       ];
 
       return {
         ...req,
-        status: 'teacher_approved',
-        statusLabel: 'GV đã duyệt (Chờ Quản trị viên xác nhận)',
-        distributionStatus: 'teacher_signed',
-        teacherSignature: sigToUse,
-        teacherApprovedAt: timeStr,
-        teacherApprovedBy: teacherName,
+        status: allSigned ? 'teacher_approved' : 'in_progress',
+        statusLabel: allSigned
+          ? 'Tất cả cán bộ đã ký (Chờ Quản lý xác nhận)'
+          : `Đang xử lý (${signedCount}/${totalSigners} cán bộ đã ký)`,
+        distributionStatus: allSigned ? 'teacher_signed' : 'partially_signed',
+        assignedSigners: signers,
+        signatures: newSignatures,
+        // Giữ tương thích ngược với trường teacherSignature / departmentSignature
+        teacherSignature: isGvcn ? sigToUse : (req.teacherSignature || sigToUse),
+        teacherApprovedAt: isGvcn ? timeStr : req.teacherApprovedAt,
+        teacherApprovedBy: isGvcn ? teacherName : req.teacherApprovedBy,
+        departmentSignature: isKhaoThi ? sigToUse : req.departmentSignature,
+        departmentApprovedAt: isKhaoThi ? timeStr : req.departmentApprovedAt,
+        departmentApprovedBy: isKhaoThi ? teacherName : req.departmentApprovedBy,
         logs: newLogs,
       };
     }
@@ -431,31 +556,48 @@ export function signAndApproveByTeacher(requestId, teacherInfoOrSig, signatureOr
   saveStoredRequests(updated);
 
   if (targetReq) {
-    // Thông báo cho Quản trị viên
-    addNotification({
-      recipient: 'admin',
-      title: 'Hồ sơ đã duyệt – Chờ xác nhận',
-      body: `GVCN ${teacherName} đã ký duyệt đơn ${requestId} của SV ${targetReq.studentName}. Vui lòng kiểm tra và xác nhận hoàn tất.`,
-      message: `GVCN ${teacherName} đã ký duyệt đơn ${requestId} của SV ${targetReq.studentName}. Vui lòng kiểm tra và xác nhận hoàn tất.`,
-      requestId,
-    });
+    if (allSigned) {
+      addNotification({
+        recipient: 'admin',
+        title: 'Hồ sơ đã hoàn tất ký duyệt – Chờ xác nhận',
+        body: `Tất cả cán bộ (${totalSigners}/${totalSigners}) đã ký duyệt xong đơn ${requestId} của SV ${targetReq.studentName}. Vui lòng kiểm tra và xác nhận hoàn tất.`,
+        message: `Tất cả cán bộ (${totalSigners}/${totalSigners}) đã ký duyệt xong đơn ${requestId} của SV ${targetReq.studentName}. Vui lòng kiểm tra và xác nhận hoàn tất.`,
+        requestId,
+      });
 
-    // Thông báo cho Sinh viên
-    addNotification({
-      recipient: targetReq.studentCode,
-      studentCode: targetReq.studentCode,
-      title: 'GVCN đã ký duyệt đơn',
-      body: `Đơn ${requestId} của bạn đã được GVCN ${teacherName} ký số phê duyệt. Đang chờ Quản trị viên xác nhận hoàn tất.`,
-      message: `Đơn ${requestId} của bạn đã được GVCN ${teacherName} ký số phê duyệt. Đang chờ Quản trị viên xác nhận hoàn tất.`,
-      requestId,
-    });
+      addNotification({
+        recipient: targetReq.studentCode,
+        studentCode: targetReq.studentCode,
+        title: 'Tất cả cán bộ đã ký duyệt đơn',
+        body: `Đơn ${requestId} của bạn đã được các Thầy/Cô và Phòng ban ký duyệt đầy đủ. Đang chờ Quản trị viên xác nhận hoàn tất.`,
+        message: `Đơn ${requestId} của bạn đã được các Thầy/Cô và Phòng ban ký duyệt đầy đủ. Đang chờ Quản trị viên xác nhận hoàn tất.`,
+        requestId,
+      });
+    } else {
+      addNotification({
+        recipient: 'admin',
+        title: 'Hồ sơ có chữ ký mới',
+        body: `${teacherName} vừa ký duyệt đơn ${requestId} của SV ${targetReq.studentName} (${signedCount}/${totalSigners} người đã ký).`,
+        message: `${teacherName} vừa ký duyệt đơn ${requestId} của SV ${targetReq.studentName} (${signedCount}/${totalSigners} người đã ký).`,
+        requestId,
+      });
+
+      addNotification({
+        recipient: targetReq.studentCode,
+        studentCode: targetReq.studentCode,
+        title: 'Cập nhật tiến độ ký duyệt',
+        body: `${teacherName} đã ký duyệt đơn ${requestId} của bạn (${signedCount}/${totalSigners} người đã ký).`,
+        message: `${teacherName} đã ký duyệt đơn ${requestId} của bạn (${signedCount}/${totalSigners} người đã ký).`,
+        requestId,
+      });
+    }
   }
 
   return updated;
 }
 
 /**
- * Quản trị viên xóa chữ ký của Giảng viên để yêu cầu Giảng viên ký lại
+ * Quản trị viên xóa chữ ký của Giảng viên / Cán bộ để yêu cầu ký lại
  */
 export function resetTeacherSignatureByAdmin(requestId, adminName = 'Quản trị viên') {
   const currentList = getStoredRequests();
@@ -469,21 +611,36 @@ export function resetTeacherSignatureByAdmin(requestId, adminName = 'Quản tr�
       const newLogs = [
         ...(req.logs || []),
         {
-          action: 'Xóa chữ ký GV & Mở lại quyền ký',
+          action: 'Xóa chữ ký & Mở lại quyền ký',
           actor: adminName,
           time: timeStr,
-          note: `${adminName} đã xóa chữ ký GVCN và mở lại quyền để Giảng viên ký lại.`,
+          note: `${adminName} đã xóa chữ ký và mở lại quyền để các cán bộ ký lại.`,
         },
       ];
+
+      const resetSigners = Array.isArray(req.assignedSigners)
+        ? req.assignedSigners.map((s) => ({
+            ...s,
+            status: 'pending',
+            signedAt: null,
+            signatureUrl: null,
+            signedBy: null,
+          }))
+        : [];
 
       return {
         ...req,
         status: 'in_progress',
-        statusLabel: 'Đang xử lý (Chờ GV ký lại)',
+        statusLabel: 'Đang xử lý (Chờ ký lại)',
         distributionStatus: 'assigned',
+        assignedSigners: resetSigners,
+        signatures: [],
         teacherSignature: '',
         teacherApprovedAt: null,
         teacherApprovedBy: null,
+        departmentSignature: '',
+        departmentApprovedAt: null,
+        departmentApprovedBy: null,
         logs: newLogs,
       };
     }
@@ -493,13 +650,18 @@ export function resetTeacherSignatureByAdmin(requestId, adminName = 'Quản tr�
   saveStoredRequests(updated);
 
   if (targetReq) {
-    const teacherRecipient = targetReq.assignedTo?.id || 'teacher';
-    addNotification({
-      recipient: teacherRecipient,
-      title: 'Yêu cầu ký lại đơn từ Quản trị viên',
-      body: `Quản trị viên đã xóa chữ ký đơn ${requestId} (${targetReq.typeName}) của SV ${targetReq.studentName} và mở lại để bạn ký lại.`,
-      message: `Quản trị viên đã xóa chữ ký đơn ${requestId} (${targetReq.typeName}) của SV ${targetReq.studentName} và mở lại để bạn ký lại.`,
-      requestId,
+    const recipients = Array.isArray(targetReq.assignedSigners) && targetReq.assignedSigners.length > 0
+      ? targetReq.assignedSigners.map((s) => s.email || s.id)
+      : [targetReq.assignedTo?.id || 'teacher'];
+
+    recipients.forEach((recip) => {
+      addNotification({
+        recipient: recip,
+        title: 'Yêu cầu ký lại đơn từ Quản trị viên',
+        body: `Quản trị viên đã xóa chữ ký đơn ${requestId} (${targetReq.typeName}) của SV ${targetReq.studentName} và mở lại để bạn ký lại.`,
+        message: `Quản trị viên đã xóa chữ ký đơn ${requestId} (${targetReq.typeName}) của SV ${targetReq.studentName} và mở lại để bạn ký lại.`,
+        requestId,
+      });
     });
 
     addNotification({
