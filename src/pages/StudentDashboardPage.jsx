@@ -23,9 +23,14 @@ import RequestTypePicker from '../components/RequestTypePicker';
 import OfficialDocumentView from '../components/OfficialDocumentView';
 import { triggerPrintClean } from '../utils/printHelper';
 import { getStudentProfile, formatCccd } from '../services/cmsService';
-import { cancelAndRemoveRequest } from '../services/requestService';
+import {
+  cancelAndRemoveRequest,
+  listMyRequests,
+  subscribeAllRequestsChange,
+} from '../services/requestService';
 import {
   getStoredRequests,
+  saveStoredRequests,
   getStoredNotifications,
   markNotificationAsRead,
   markAllNotificationsAsRead,
@@ -255,11 +260,23 @@ function StudentDashboardPage({ user, logoSrc = DEFAULT_LOGO_SRC, onLogout }) {
     setTimeout(() => setToastMessage(''), 4500);
   };
 
-  // Đọc danh sách đơn từ localStorage dùng chung (đồng bộ với Quản trị viên và Giảng viên)
+  // Đọc danh sách đơn từ Supabase (đồng bộ thời gian thực)
   const [storedRequests, setStoredRequests] = useState(() => getStoredRequests());
   const [notifications, setNotifications] = useState(() =>
     getStoredNotifications(user?.studentCode)
   );
+
+  const loadRequestsFromSupabase = async () => {
+    try {
+      const res = await listMyRequests(user?.studentCode);
+      if (res?.data !== null && Array.isArray(res.data)) {
+        setStoredRequests(res.data);
+        saveStoredRequests(res.data);
+      }
+    } catch (err) {
+      console.warn('Lỗi tải requests từ Supabase (Student):', err);
+    }
+  };
 
   const [liveProfile, setLiveProfile] = useState(null);
 
@@ -278,11 +295,23 @@ function StudentDashboardPage({ user, logoSrc = DEFAULT_LOGO_SRC, onLogout }) {
   }, [user?.studentCode]);
 
   useEffect(() => {
-    setStoredRequests(getStoredRequests());
+    loadRequestsFromSupabase();
     setNotifications(getStoredNotifications(user?.studentCode));
   }, [activeTab, user?.studentCode]);
 
   useEffect(() => {
+    loadRequestsFromSupabase();
+
+    const unsub = subscribeAllRequestsChange((freshRequests) => {
+      if (Array.isArray(freshRequests)) {
+        const studentRequests = user?.studentCode
+          ? freshRequests.filter((r) => r.studentCode === user.studentCode)
+          : freshRequests;
+        setStoredRequests(studentRequests);
+        saveStoredRequests(freshRequests);
+      }
+    });
+
     const syncData = () => {
       setStoredRequests(getStoredRequests());
       setNotifications(getStoredNotifications(user?.studentCode));
@@ -291,6 +320,7 @@ function StudentDashboardPage({ user, logoSrc = DEFAULT_LOGO_SRC, onLogout }) {
     window.addEventListener('vmh_requests_updated', syncData);
     window.addEventListener('storage', syncData);
     return () => {
+      if (unsub) unsub();
       window.removeEventListener('vmh_notifications_updated', syncData);
       window.removeEventListener('vmh_requests_updated', syncData);
       window.removeEventListener('storage', syncData);

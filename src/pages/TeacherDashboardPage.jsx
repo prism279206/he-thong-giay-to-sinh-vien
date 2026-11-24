@@ -29,11 +29,17 @@ import OfficialDocumentView from '../components/OfficialDocumentView';
 import { triggerPrintClean } from '../utils/printHelper';
 import {
   getStoredRequests,
+  saveStoredRequests,
   signAndApproveByTeacher,
   getStoredNotifications,
   markNotificationAsRead,
   markAllNotificationsAsRead,
 } from '../components/mockRequestsStore';
+import {
+  listStaffRequests,
+  subscribeAllRequestsChange,
+  signAndApproveRequest,
+} from '../services/requestService';
 
 /**
  * Xử lý tách nền ảnh chữ ký của Giảng viên (tách nền trắng/xám xuất PNG trong suốt)
@@ -296,6 +302,19 @@ function TeacherDashboardPage({ user, logoSrc = DEFAULT_LOGO_SRC, onLogout }) {
   const teacherFileInputRef = useRef(null);
   const [showConfirmSignModal, setShowConfirmSignModal] = useState(false);
 
+  // Hàm tải dữ liệu hồ sơ thực tế từ Supabase database
+  const loadRequestsFromSupabase = async () => {
+    try {
+      const res = await listStaffRequests();
+      if (res?.data !== null && Array.isArray(res.data)) {
+        setRequestsList(res.data);
+        saveStoredRequests(res.data);
+      }
+    } catch (err) {
+      console.warn('Lỗi tải requests từ Supabase (Teacher):', err);
+    }
+  };
+
   // Quản lý thông báo phân công cho Giảng viên
   const teacherId = user?.teacherCode || 'GV001';
   const [showTeacherNotifications, setShowTeacherNotifications] = useState(false);
@@ -305,11 +324,21 @@ function TeacherDashboardPage({ user, logoSrc = DEFAULT_LOGO_SRC, onLogout }) {
 
   // Tự động đồng bộ danh sách đơn và thông báo khi chuyển tab hoặc khi có cập nhật
   useEffect(() => {
-    setRequestsList(getStoredRequests());
+    loadRequestsFromSupabase();
     setTeacherNotifications(getStoredNotifications(teacherId));
   }, [activeTab, teacherId]);
 
   useEffect(() => {
+    loadRequestsFromSupabase();
+
+    // Lắng nghe Realtime bảng requests trên Supabase
+    const unsub = subscribeAllRequestsChange((freshRequests) => {
+      if (Array.isArray(freshRequests)) {
+        setRequestsList(freshRequests);
+        saveStoredRequests(freshRequests);
+      }
+    });
+
     const syncData = () => {
       setRequestsList(getStoredRequests());
       setTeacherNotifications(getStoredNotifications(teacherId));
@@ -318,6 +347,7 @@ function TeacherDashboardPage({ user, logoSrc = DEFAULT_LOGO_SRC, onLogout }) {
     window.addEventListener('vmh_requests_updated', syncData);
     window.addEventListener('storage', syncData);
     return () => {
+      if (unsub) unsub();
       window.removeEventListener('vmh_notifications_updated', syncData);
       window.removeEventListener('vmh_requests_updated', syncData);
       window.removeEventListener('storage', syncData);
@@ -338,6 +368,16 @@ function TeacherDashboardPage({ user, logoSrc = DEFAULT_LOGO_SRC, onLogout }) {
     ).length;
     const overdueCount = requestsList.filter((r) => r.status === 'overdue').length;
     return { pendingCount, completedCount, overdueCount };
+  }, [requestsList]);
+
+  // Danh sách hồ sơ đã hoàn tất / phê duyệt (lấy trực tiếp từ database, không dùng dữ liệu ảo)
+  const historyRequests = useMemo(() => {
+    return requestsList.filter(
+      (r) =>
+        r.status === 'completed' ||
+        r.status === 'teacher_approved' ||
+        r.status === 'rejected'
+    );
   }, [requestsList]);
 
   // Tên giáo viên và avatar
@@ -535,7 +575,10 @@ function TeacherDashboardPage({ user, logoSrc = DEFAULT_LOGO_SRC, onLogout }) {
   };
 
   // Bước 2: Khi GV xác nhận chắc chắn muốn ký (không thể tự ý ký lại sau bước này)
-  const handleExecuteApprove = (reqId) => {
+  const handleExecuteApprove = async (reqId) => {
+    // Lưu chữ ký và cập nhật trực tiếp lên Supabase database
+    await signAndApproveRequest(reqId, teacherSignature, teacherName);
+
     const updated = signAndApproveByTeacher(
       reqId,
       {
@@ -1130,19 +1173,78 @@ function TeacherDashboardPage({ user, logoSrc = DEFAULT_LOGO_SRC, onLogout }) {
           )}
 
           {activeTab === 'history' && (
-            <section className="rounded-2xl border border-slate-200/70 bg-white p-6 shadow-xs">
-              <h1 className="text-lg font-bold text-slate-800">Lịch sử xử lý đơn từ</h1>
-              <p className="mt-1 text-sm text-slate-500">
-                Toàn bộ lịch sử duyệt, chuyển tiếp hoặc từ chối đơn sinh viên được ghi nhật ký bất biến.
-              </p>
-              <div className="mt-5 divide-y divide-slate-100 rounded-xl border border-slate-100 bg-slate-50/60 p-4 text-sm text-slate-600">
-                <div className="py-2.5">
-                  <span className="font-semibold text-slate-800">#2025-1038 (Đỗ Khánh Linh):</span> Đã ký duyệt và chuyển tiếp phòng Đào tạo (02/11/2025 14:00)
-                </div>
-                <div className="py-2.5">
-                  <span className="font-semibold text-slate-800">#2025-1030 (Lê Văn Hoàng):</span> Đã xác nhận thông tin sinh viên học kỳ phụ (28/10/2025 11:20)
+            <section className="rounded-2xl border border-slate-200/70 bg-white p-5 shadow-xs sm:p-6">
+              <div className="mb-5 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <h1 className="text-xl font-bold text-slate-800">Lịch sử xử lý đơn từ</h1>
+                  <p className="text-sm text-slate-500">
+                    Toàn bộ lịch sử duyệt, chuyển tiếp hoặc từ chối đơn sinh viên được ghi nhật ký bất biến trên cơ sở dữ liệu.
+                  </p>
                 </div>
               </div>
+
+              {historyRequests.length === 0 ? (
+                <div className="py-16 text-center">
+                  <div className="mx-auto mb-3 flex h-14 w-14 items-center justify-center rounded-2xl bg-slate-100 text-slate-400">
+                    <History className="h-7 w-7 text-slate-400" />
+                  </div>
+                  <h3 className="text-base font-bold text-slate-700">Chưa có lịch sử xử lý đơn từ nào</h3>
+                  <p className="mt-1 text-xs text-slate-400 max-w-md mx-auto">
+                    Cơ sở dữ liệu trên Supabase đang trống hoặc chưa có hồ sơ nào được phê duyệt/hoàn tất. Toàn bộ nhật ký xử lý thực tế sẽ hiển thị tại đây.
+                  </p>
+                </div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full min-w-[700px] text-left text-sm">
+                    <thead>
+                      <tr className="border-b border-slate-100 text-xs font-semibold text-slate-500">
+                        <th className="py-3 pr-4 pl-2 font-semibold text-slate-700">Loại đơn</th>
+                        <th className="px-4 py-3">Sinh viên</th>
+                        <th className="px-4 py-3">Lớp / Ngành</th>
+                        <th className="px-4 py-3">Trạng thái</th>
+                        <th className="py-3 pr-2 pl-4 text-right">Chi tiết</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {historyRequests.map((req) => (
+                        <tr key={req.id} className="transition-colors hover:bg-slate-50/70">
+                          <td className="py-3.5 pr-4 pl-2 font-semibold text-slate-800">{req.typeName}</td>
+                          <td className="px-4 py-3.5">
+                            <p className="font-semibold text-slate-800">{req.studentName}</p>
+                            <p className="text-xs text-slate-400">MSSV: {req.studentCode}</p>
+                          </td>
+                          <td className="px-4 py-3.5 text-slate-600 text-xs">
+                            <p className="font-medium text-slate-700">{req.className}</p>
+                            <p className="text-slate-400">{req.major}</p>
+                          </td>
+                          <td className="px-4 py-3.5 whitespace-nowrap">
+                            <StatusPill status={req.status} label={req.statusLabel} />
+                          </td>
+                          <td className="py-3.5 pr-2 pl-4 text-right whitespace-nowrap">
+                            <div className="flex items-center justify-end gap-1.5">
+                              <button
+                                type="button"
+                                onClick={() => setViewDocRequest(req)}
+                                className="cursor-pointer rounded-lg border border-blue-200 bg-white px-2.5 py-1.5 text-xs font-semibold text-[#2563EB] hover:bg-blue-50"
+                                title="Mở toàn văn văn bản đơn A4"
+                              >
+                                Mở đơn
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setSelectedRequest(req)}
+                                className="cursor-pointer rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-50"
+                              >
+                                Chi tiết
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
             </section>
           )}
 

@@ -19,7 +19,8 @@ import {
 } from 'lucide-react';
 import StudentConfirmationForm from './StudentConfirmationForm';
 import OfficialDocumentView from './OfficialDocumentView';
-import { getStoredRequestTypes } from './mockRequestsStore';
+import { getStoredRequestTypes, saveStoredRequestTypes } from './mockRequestsStore';
+import { fetchRequestTypesFromSupabase } from '../services/requestService';
 import { formatCccd } from '../services/cmsService';
 
 function renderCategoryIcon(category, code, className = 'h-5 w-5') {
@@ -41,8 +42,15 @@ function RequestTypePicker({ onBack, user }) {
   const [selectedType, setSelectedType] = useState(null);
   const [typesList, setTypesList] = useState(() => getStoredRequestTypes());
 
-  // Lắng nghe sự kiện cập nhật danh mục loại đơn từ Quản trị viên
+  // Lắng nghe sự kiện cập nhật danh mục loại đơn từ Quản trị viên và Supabase
   useEffect(() => {
+    fetchRequestTypesFromSupabase().then((res) => {
+      if (res?.data !== null) {
+        setTypesList(res.data);
+        saveStoredRequestTypes(res.data);
+      }
+    });
+
     const handleUpdate = () => {
       setTypesList(getStoredRequestTypes());
     };

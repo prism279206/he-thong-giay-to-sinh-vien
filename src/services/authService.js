@@ -398,45 +398,129 @@ export async function changePassword(newPassword) {
 }
 
 /**
- * Lấy danh sách giảng viên / cán bộ thực tế từ bảng profiles trên database
+ * Lấy danh sách đối tượng tiếp nhận & giải quyết đơn từ bảng profiles trên database Supabase.
+ * Tự động phân loại:
+ * - Giảng viên / GVCN: don_vi chứa 'Giảng viên' -> Nhãn hiển thị: `${ho_ten} - Giảng viên`
+ * - Phòng ban: don_vi là các phòng ban khác -> Nhãn hiển thị: `${ho_ten} - ${don_vi}`
  */
-export async function listLecturersFromDatabase() {
+export async function getDispatchTargetsFromDatabase() {
   try {
     const { data, error } = await supabase
       .from('profiles')
       .select('id, ho_ten, role, ma_can_bo, don_vi, email')
-      .in('role', ['staff', 'teacher']);
+      .order('ho_ten', { ascending: true });
 
     if (!error && data && data.length > 0) {
+      const lecturers = [];
+      const departments = [];
+
+      data.forEach((p) => {
+        // Bỏ qua tài khoản admin không dùng để nhận giải quyết đơn
+        if (
+          p.role === 'admin' ||
+          (p.email && p.email.toLowerCase().startsWith('admin@')) ||
+          (p.ma_can_bo && p.ma_can_bo.toLowerCase() === 'admincdvmhn')
+        ) {
+          return;
+        }
+
+        const hoTen = (p.ho_ten || '').trim();
+        const donVi = (p.don_vi || '').trim();
+        const donViLower = donVi.toLowerCase();
+
+        // Kiểm tra phân loại: nếu don_vi chứa 'giảng viên' hoặc role là teacher
+        const isLecturer =
+          donViLower.includes('giảng viên') ||
+          donViLower.includes('giang vien') ||
+          p.role === 'teacher';
+
+        if (isLecturer) {
+          // Xếp qua Giảng viên / GVCN - định dạng: `${ho_ten} - Giảng viên`
+          lecturers.push({
+            id: p.ma_can_bo || p.id,
+            profileId: p.id,
+            name: hoTen || 'Giảng viên',
+            maCanBo: p.ma_can_bo || 'GV',
+            donVi: 'Giảng viên',
+            role: 'Giảng viên - GVCN',
+            label: `${hoTen || 'Giảng viên'} - Giảng viên`,
+            email: p.email,
+          });
+        } else {
+          // Xếp qua Phòng ban Chức năng - định dạng: `${ho_ten} - ${don_vi}`
+          const deptName = donVi || 'Phòng ban Chức năng';
+          departments.push({
+            id: p.ma_can_bo || p.id,
+            profileId: p.id,
+            name: hoTen || deptName,
+            maCanBo: p.ma_can_bo || 'CB',
+            donVi: deptName,
+            role: deptName,
+            label: `${hoTen || 'Cán bộ'} - ${deptName}`,
+            email: p.email,
+          });
+        }
+      });
+
       return {
-        data: data.map((p) => ({
-          id: p.ma_can_bo || p.id,
-          name: p.ho_ten || 'Giảng viên',
-          code: p.ma_can_bo || 'GV',
-          role: p.don_vi || 'Giảng viên - GVCN',
-          faculty: p.don_vi || 'Giảng viên - GVCN',
-          email: p.email,
-        })),
+        data: {
+          lecturers,
+          departments,
+        },
         error: null,
       };
     }
   } catch (err) {
-    console.warn('Lỗi lấy danh sách giảng viên từ database:', err.message);
+    console.warn('Lỗi lấy danh sách đối tượng giải quyết từ database:', err.message);
   }
 
-  // Fallback giảng viên thật đã cấu hình
+  // Trường hợp database chưa có nhân sự hoặc mất kết nối, trả về mảng rỗng để đảm bảo 100% dữ liệu thật từ DB
   return {
-    data: [
-      {
-        id: 'GV002',
-        name: 'Đỗ Thị Hương',
-        code: 'GV002',
-        role: 'Giảng viên - GVCN',
-        faculty: 'Giảng viên - GVCN',
-        email: 'huong.do1@caodangvietmyhanoi.edu.vn',
-      },
-    ],
+    data: {
+      lecturers: [],
+      departments: [],
+    },
     error: null,
+  };
+}
+
+/**
+ * Đăng ký lắng nghe sự kiện thay đổi dữ liệu nhân sự bảng profiles theo thời gian thực (Supabase Realtime)
+ * Khi database thay đổi (thêm/sửa/xóa profile), hàm callback sẽ tự động được gọi với dữ liệu mới nhất
+ */
+export function subscribeDispatchTargetsChange(callback) {
+  try {
+    const channel = supabase
+      .channel('realtime:profiles:dispatch')
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'profiles' },
+        async () => {
+          const res = await getDispatchTargetsFromDatabase();
+          if (res?.data && typeof callback === 'function') {
+            callback(res.data);
+          }
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  } catch (err) {
+    console.warn('Lỗi đăng ký Realtime profiles:', err);
+    return () => {};
+  }
+}
+
+/**
+ * Lấy danh sách giảng viên / cán bộ thực tế từ bảng profiles trên database (tương thích ngược)
+ */
+export async function listLecturersFromDatabase() {
+  const result = await getDispatchTargetsFromDatabase();
+  return {
+    data: result.data?.lecturers || [],
+    error: result.error,
   };
 }
 

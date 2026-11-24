@@ -42,8 +42,16 @@ import {
   deleteRequestTypeOnSupabase,
   finalizeAndNotifyStudentRequest,
   cleanupExpiredRequests,
+  dispatchRequest,
+  fetchRequestTypesFromSupabase,
+  subscribeRequestTypesChange,
+  listStaffRequests,
+  subscribeAllRequestsChange,
 } from '../services/requestService';
-import { listLecturersFromDatabase } from '../services/authService';
+import {
+  getDispatchTargetsFromDatabase,
+  subscribeDispatchTargetsChange,
+} from '../services/authService';
 import {
   getStoredRequests,
   saveStoredRequests,
@@ -86,10 +94,7 @@ export const DEPARTMENTS = [
   { id: 'gvcn', name: 'Giảng viên - GVCN', code: 'GVCN', officer: 'Giảng viên phụ trách' },
 ];
 
-// Danh sách giảng viên mặc định (sẽ được cập nhật động từ bảng profiles database)
-export const LECTURERS = [
-  { id: 'GV002', name: 'Đỗ Thị Hương', code: 'GV002', faculty: 'Giảng viên - GVCN', role: 'Giảng viên - GVCN' },
-];
+export const LECTURERS = [];
 
 // Bộ lọc dữ liệu đồng bộ
 const COHORT_OPTIONS = ['Tất cả', ...ACTIVE_COHORTS];
@@ -320,19 +325,64 @@ export default function AdminDashboardPage({ user, logoSrc = DEFAULT_LOGO_SRC, o
   const [selectedClass, setSelectedClass] = useState('Tất cả');
   const [selectedStatus, setSelectedStatus] = useState('all');
 
-  // Quản lý danh sách đơn (lấy từ kho lưu trữ chung)
+  // Quản lý danh sách đơn (đồng bộ thời gian thực với Supabase database)
   const [requestsList, setRequestsList] = useState(() => getStoredRequests());
   const [actionSuccessMsg, setActionSuccessMsg] = useState('');
 
-  // Danh sách giảng viên tải động từ database profiles
-  const [lecturersList, setLecturersList] = useState(LECTURERS);
+  // Hàm tải dữ liệu hồ sơ thực tế từ Supabase database
+  const loadRequestsFromSupabase = async () => {
+    try {
+      const res = await listStaffRequests();
+      if (res?.data !== null && Array.isArray(res.data)) {
+        setRequestsList(res.data);
+        saveStoredRequests(res.data);
+      }
+    } catch (err) {
+      console.warn('Lỗi tải requests từ Supabase:', err);
+    }
+  };
+
+  // Danh sách đối tượng tiếp nhận giải quyết tải động từ database profiles
+  const [dispatchLecturers, setDispatchLecturers] = useState([]);
+  const [dispatchDepartments, setDispatchDepartments] = useState([]);
+
+  // Hàm tải dữ liệu đối tượng giải quyết từ Supabase database
+  const loadDispatchTargets = async () => {
+    try {
+      const res = await getDispatchTargetsFromDatabase();
+      if (res?.data) {
+        setDispatchLecturers(res.data.lecturers || []);
+        setDispatchDepartments(res.data.departments || []);
+      }
+    } catch (err) {
+      console.warn('Lỗi tải đối tượng tiếp nhận:', err);
+    }
+  };
 
   useEffect(() => {
-    listLecturersFromDatabase().then((res) => {
-      if (res?.data && res.data.length > 0) {
-        setLecturersList(res.data);
+    loadRequestsFromSupabase();
+    loadDispatchTargets();
+
+    // Lắng nghe Realtime bảng requests: khi sinh viên nộp/sửa/xóa đơn, tự động cập nhật ngay lập tức
+    const unsubRequests = subscribeAllRequestsChange((freshRequests) => {
+      if (Array.isArray(freshRequests)) {
+        setRequestsList(freshRequests);
+        saveStoredRequests(freshRequests);
       }
     });
+
+    // Lắng nghe Realtime: khi bảng profiles trên Supabase thay đổi (thêm/sửa/xóa), tự cập nhật ngay
+    const unsubTargets = subscribeDispatchTargetsChange((data) => {
+      if (data) {
+        setDispatchLecturers(data.lecturers || []);
+        setDispatchDepartments(data.departments || []);
+      }
+    });
+
+    return () => {
+      if (unsubRequests) unsubRequests();
+      if (unsubTargets) unsubTargets();
+    };
   }, []);
 
   // Quản lý thông báo gửi về cho Quản trị viên
@@ -343,7 +393,7 @@ export default function AdminDashboardPage({ user, logoSrc = DEFAULT_LOGO_SRC, o
 
   // Tự động đồng bộ danh sách đơn và thông báo khi chuyển tab hoặc khi có cập nhật
   useEffect(() => {
-    setRequestsList(getStoredRequests());
+    loadRequestsFromSupabase();
     setAdminNotifications(getStoredNotifications('admin'));
   }, [activeTab]);
 
@@ -369,10 +419,32 @@ export default function AdminDashboardPage({ user, logoSrc = DEFAULT_LOGO_SRC, o
     return adminNotifications.filter((n) => !n.isRead).length;
   }, [adminNotifications]);
 
-  // Quản lý danh mục các loại đơn đang có trong hệ thống (lưu trữ vĩnh viễn trên localStorage)
+  // Quản lý danh mục các loại đơn đang có trong hệ thống (đồng bộ trực tiếp từ Supabase)
   const [requestTypes, setRequestTypes] = useState(() => getStoredRequestTypes());
   const [typeSearchTerm, setTypeSearchTerm] = useState('');
   const [selectedTypeCategory, setSelectedTypeCategory] = useState('all');
+
+  // Tự động tải và đồng bộ danh mục loại đơn từ Supabase
+  useEffect(() => {
+    fetchRequestTypesFromSupabase().then((res) => {
+      if (res?.data !== null) {
+        setRequestTypes(res.data);
+        saveStoredRequestTypes(res.data);
+      }
+    });
+
+    // Lắng nghe Realtime: Khi bảng request_types trên Supabase thay đổi (thêm/xóa đơn), tự cập nhật tức thì
+    const unsubscribe = subscribeRequestTypesChange((types) => {
+      if (types !== null) {
+        setRequestTypes(types);
+        saveStoredRequestTypes(types);
+      }
+    });
+
+    return () => {
+      if (unsubscribe) unsubscribe();
+    };
+  }, []);
 
   // Modal thêm loại đơn mới bằng Chụp ảnh / Tải file
   const [isAddTypeModalOpen, setIsAddTypeModalOpen] = useState(false);
@@ -390,6 +462,7 @@ export default function AdminDashboardPage({ user, logoSrc = DEFAULT_LOGO_SRC, o
 
   // Xem chi tiết mẫu đơn đã có
   const [viewingTemplate, setViewingTemplate] = useState(null);
+  const [templateViewMode, setTemplateViewMode] = useState('blank'); // 'blank' (để trắng) | 'fake' (Nguyễn Văn A)
 
   // Modal xác nhận xóa vĩnh viễn loại đơn
   const [typeToDelete, setTypeToDelete] = useState(null);
@@ -654,8 +727,8 @@ export default function AdminDashboardPage({ user, logoSrc = DEFAULT_LOGO_SRC, o
     setIsCameraActive(false);
   };
 
-  // Xử lý lưu loại đơn mới (lưu vào localStorage vĩnh viễn)
-  const handleSaveNewRequestType = (e) => {
+  // Xử lý lưu loại đơn mới (đồng bộ lên Supabase và lưu cache)
+  const handleSaveNewRequestType = async (e) => {
     e.preventDefault();
     if (!newTypeName.trim()) return;
 
@@ -677,10 +750,19 @@ export default function AdminDashboardPage({ user, logoSrc = DEFAULT_LOGO_SRC, o
       createdAt: new Date().toLocaleDateString('vi-VN'),
     };
 
-    const updatedTypes = [newTypeItem, ...requestTypes];
+    // Đẩy trực tiếp lên Supabase
+    const { data: createdDbRow, error: dbError } = await createRequestTypeOnSupabase(newTypeItem);
+
+    if (dbError) {
+      alert(`Lưu lên Supabase gặp lỗi: ${dbError.message || dbError}\nVui lòng chạy lệnh SQL mở quyền RLS trên Supabase SQL Editor.`);
+    }
+
+    // Nếu database tạo thành công và trả về ID UUID thật, gắn UUID đó vào loại đơn
+    const finalItem = createdDbRow?.id ? { ...newTypeItem, id: createdDbRow.id } : newTypeItem;
+
+    const updatedTypes = [finalItem, ...requestTypes];
     setRequestTypes(updatedTypes);
     saveStoredRequestTypes(updatedTypes);
-    createRequestTypeOnSupabase(newTypeItem);
 
     // Chuyển bộ lọc danh mục về 'all' và xóa từ khóa tìm kiếm để loại đơn mới xuất hiện ngay đầu danh sách
     setSelectedTypeCategory('all');
@@ -730,21 +812,38 @@ export default function AdminDashboardPage({ user, logoSrc = DEFAULT_LOGO_SRC, o
 
   // Mở modal phân phát đơn
   const handleOpenDispatch = (req) => {
+    // Tự động làm mới danh sách nhân sự từ database khi mở modal
+    loadDispatchTargets();
+
     setSelectedRequest(req);
     setDispatchUrgency(req.urgency || 'normal');
     setDispatchNote('');
-    if (req.typeCategory?.includes('Khảo thí')) {
+
+    const category = req.typeCategory || '';
+    const isDeptCategory =
+      category.includes('Khảo thí') ||
+      category.includes('Công tác sinh viên') ||
+      category.includes('Ký túc xá') ||
+      category.includes('xe buýt') ||
+      category.includes('Học vụ') ||
+      category.includes('Đào tạo') ||
+      category.includes('Học phí');
+
+    if (isDeptCategory) {
       setDispatchType('department');
-      setTargetId('khao_thi');
-    } else if (req.typeCategory?.includes('Công tác sinh viên') || req.typeCategory?.includes('Ký túc xá') || req.typeCategory?.includes('xe buýt')) {
-      setDispatchType('department');
-      setTargetId('ctsv');
-    } else if (req.typeCategory?.includes('Học vụ') || req.typeCategory?.includes('Đào tạo') || req.typeCategory?.includes('Học phí')) {
-      setDispatchType('department');
-      setTargetId('dao_tao');
+      // Tìm phòng ban phù hợp theo danh mục loại đơn
+      let matchedDept = null;
+      if (category.includes('Đào tạo') || category.includes('Học vụ') || category.includes('Học phí')) {
+        matchedDept = dispatchDepartments.find((d) => d.label?.includes('Đào tạo') || d.donVi?.includes('Đào tạo'));
+      } else if (category.includes('Công tác sinh viên') || category.includes('Ký túc xá') || category.includes('xe buýt')) {
+        matchedDept = dispatchDepartments.find((d) => d.label?.includes('Công tác sinh viên') || d.donVi?.includes('Công tác sinh viên'));
+      } else if (category.includes('Khảo thí')) {
+        matchedDept = dispatchDepartments.find((d) => d.label?.includes('Khảo thí') || d.donVi?.includes('Khảo thí'));
+      }
+      setTargetId(matchedDept?.id || dispatchDepartments[0]?.id || '');
     } else {
       setDispatchType('lecturer');
-      setTargetId(lecturersList[0]?.id || 'GV002');
+      setTargetId(dispatchLecturers[0]?.id || '');
     }
     setIsDispatchModalOpen(true);
   };
@@ -752,31 +851,38 @@ export default function AdminDashboardPage({ user, logoSrc = DEFAULT_LOGO_SRC, o
   // Xác nhận phân phát đơn tới GV hoặc Phòng ban
   const handleConfirmDispatch = (e) => {
     e.preventDefault();
-    if (!selectedRequest || !targetId) return;
+    if (!selectedRequest) return;
+    if (!targetId) {
+      alert('Chưa có nhân sự nào được chọn để tiếp nhận giải quyết. Vui lòng kiểm tra danh sách trong Database.');
+      return;
+    }
 
     let targetInfo = null;
     if (dispatchType === 'lecturer') {
-      const gv = lecturersList.find((item) => item.id === targetId) || lecturersList[0];
+      const gv = dispatchLecturers.find((item) => item.id === targetId) || dispatchLecturers[0];
       if (!gv) return;
       targetInfo = {
         type: 'lecturer',
         id: gv.id,
         name: gv.name,
         role: gv.role,
-        faculty: gv.faculty,
+        faculty: gv.donVi || 'Giảng viên',
+        displayName: gv.label || `${gv.name} - Giảng viên`,
         assignedAt: new Date().toLocaleString('vi-VN', { hour12: false }),
         assignedBy: adminName,
         note: dispatchNote || 'Kính chuyển Thầy/Cô tiếp nhận kiểm tra và có ý kiến xác nhận.',
         deadline: `Sau ${dispatchDeadline} ngày làm việc`,
       };
     } else {
-      const dept = DEPARTMENTS.find((item) => item.id === targetId) || DEPARTMENTS[0];
+      const dept = dispatchDepartments.find((item) => item.id === targetId) || dispatchDepartments[0];
       if (!dept) return;
       targetInfo = {
         type: 'department',
         id: dept.id,
         name: dept.name,
-        officer: dept.officer,
+        officer: dept.label || `${dept.name} - ${dept.donVi}`,
+        displayName: dept.label || `${dept.name} - ${dept.donVi}`,
+        donVi: dept.donVi,
         assignedAt: new Date().toLocaleString('vi-VN', { hour12: false }),
         assignedBy: adminName,
         note: dispatchNote || 'Kính chuyển Quý phòng ban kiểm tra và phối hợp giải quyết cho sinh viên.',
@@ -796,7 +902,7 @@ export default function AdminDashboardPage({ user, logoSrc = DEFAULT_LOGO_SRC, o
           logs: [
             ...item.logs,
             {
-              action: `Phân phát tới: ${targetInfo.name}`,
+              action: `Phân phát tới: ${targetInfo.displayName || targetInfo.name}`,
               actor: adminName,
               time: targetInfo.assignedAt,
               note: targetInfo.note,
@@ -810,9 +916,12 @@ export default function AdminDashboardPage({ user, logoSrc = DEFAULT_LOGO_SRC, o
     setRequestsList(updatedList);
     saveStoredRequests(updatedList);
 
+    // Đồng bộ lên Supabase
+    dispatchRequest(selectedRequest.id, targetInfo, dispatchUrgency);
+
     setIsDispatchModalOpen(false);
     setSelectedRequest(null);
-    setActionSuccessMsg(`Đã phân phát thành công đơn ${selectedRequest.id} tới ${targetInfo.name}!`);
+    setActionSuccessMsg(`Đã phân phát thành công hồ sơ tới: ${targetInfo.displayName || targetInfo.name}`);
     setTimeout(() => setActionSuccessMsg(''), 4500);
   };
 
@@ -1406,7 +1515,7 @@ export default function AdminDashboardPage({ user, logoSrc = DEFAULT_LOGO_SRC, o
                                   ) : (
                                     <Building2 className="h-3.5 w-3.5 text-emerald-600 shrink-0" />
                                   )}
-                                  <span>{req.assignedTo.name}</span>
+                                  <span>{req.assignedTo.displayName || req.assignedTo.name}</span>
                                 </div>
                               ) : (
                                 <span className="inline-flex items-center gap-1 text-xs text-amber-600 font-medium">
@@ -1703,101 +1812,127 @@ export default function AdminDashboardPage({ user, logoSrc = DEFAULT_LOGO_SRC, o
               </div>
 
               {/* Danh sách lưới các loại đơn */}
-              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                {filteredRequestTypes.map((type) => (
-                  <div
-                    key={type.id}
-                    className="flex flex-col justify-between rounded-2xl border border-slate-200/80 bg-white p-5 shadow-xs transition-all hover:border-blue-300 hover:shadow-md"
-                  >
-                    <div>
-                      {/* Top card: Mã đơn, Badge danh mục và Switch bật/tắt */}
-                      <div className="flex items-start justify-between gap-2 mb-3">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <span className="rounded-lg bg-blue-50 px-2 py-1 text-[11px] font-semibold text-[#2563EB]">
-                            {type.category}
-                          </span>
-                        </div>
-
-                        <button
-                          type="button"
-                          onClick={() => handleToggleTypeStatus(type.id)}
-                          className="cursor-pointer text-xs font-medium flex items-center gap-1"
-                          title={type.isActive ? 'Đang mở (Bấm để tạm dừng)' : 'Đang đóng (Bấm để mở lại)'}
-                        >
-                          {type.isActive ? (
-                            <span className="inline-flex items-center gap-1 text-emerald-600 font-semibold text-xs">
-                              <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
-                              Đang mở
-                            </span>
-                          ) : (
-                            <span className="inline-flex items-center gap-1 text-slate-400 font-medium text-xs">
-                              <span className="h-2 w-2 rounded-full bg-slate-400" />
-                              Tạm ngưng
-                            </span>
-                          )}
-                        </button>
-                      </div>
-
-                      {/* Tên loại đơn */}
-                      <h3 className="text-base font-bold text-slate-800 leading-snug">
-                        {type.name}
-                      </h3>
-
-                      {/* Mô tả */}
-                      <p className="mt-2 text-xs text-slate-500 line-clamp-2 leading-relaxed">
-                        {type.description}
-                      </p>
-                    </div>
-
-                    {/* Thông tin phòng ban & File mẫu đính kèm */}
-                    <div className="mt-4 pt-3 border-t border-slate-100">
-                      <div className="flex items-center justify-between text-xs text-slate-600 mb-3">
-                        <div className="flex items-center gap-1.5 truncate max-w-[220px]">
-                          <Building2 className="h-3.5 w-3.5 text-slate-400 shrink-0" />
-                          <span className="truncate">{type.departmentName}</span>
-                        </div>
-                        <div className="flex items-center gap-1 text-slate-500 shrink-0">
-                          <Clock className="h-3 w-3" />
-                          <span>SLA: {type.slaDays} ngày</span>
-                        </div>
-                      </div>
-
-                      {/* File mẫu đính kèm */}
-                      <div className="flex items-center justify-between rounded-xl bg-slate-50/80 p-2.5 border border-slate-100 text-xs">
-                        <div className="flex items-center gap-2 truncate pr-2">
-                          <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-blue-100 text-[#2563EB] shrink-0">
-                            {type.isImage ? <ImageIcon className="h-4 w-4" /> : <FileText className="h-4 w-4" />}
-                          </div>
-                          <div className="truncate text-left leading-tight">
-                            <p className="font-semibold text-slate-700 truncate">{type.templateFileName}</p>
-                            <p className="text-[10px] text-slate-400">{type.templateFileSize}</p>
-                          </div>
-                        </div>
-
-                        <div className="flex items-center gap-1.5 shrink-0">
-                          <button
-                            type="button"
-                            onClick={() => setViewingTemplate(type)}
-                            className="flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-xs font-semibold text-[#2563EB] hover:bg-blue-50 transition-colors"
-                          >
-                            <Eye className="h-3.5 w-3.5" />
-                            <span>Xem mẫu</span>
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => setTypeToDelete(type)}
-                            className="flex items-center gap-1 rounded-lg border border-red-200 bg-white px-2.5 py-1 text-xs font-semibold text-red-600 hover:bg-red-50 hover:border-red-300 transition-colors"
-                            title="Xóa loại đơn không sử dụng đến"
-                          >
-                            <Trash2 className="h-3.5 w-3.5" />
-                            <span>Xóa</span>
-                          </button>
-                        </div>
-                      </div>
-                    </div>
+              {filteredRequestTypes.length === 0 ? (
+                <div className="rounded-2xl border border-dashed border-slate-300 bg-white p-12 text-center shadow-xs">
+                  <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-blue-50 text-[#2563EB] mb-3">
+                    <FileText className="h-7 w-7" />
                   </div>
-                ))}
-              </div>
+                  <h3 className="text-base font-bold text-slate-800">Chưa có loại đơn nào trong hệ thống</h3>
+                  <p className="mt-1 text-xs text-slate-500 max-w-md mx-auto">
+                    Hiện tại danh mục trên cơ sở dữ liệu đang trống. Bạn hãy nhấn nút <strong>"Thêm đơn mới"</strong> bên trên để tải các file mẫu Word (.docx) của bạn lên hệ thống!
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsAddTypeModalOpen(true);
+                      setUploadedFile(null);
+                      setNewTypeName('');
+                      setNewTypeCode('');
+                      setNewTypeDescription('');
+                    }}
+                    className="mt-4 inline-flex items-center gap-2 rounded-xl bg-[#2563EB] px-4 py-2 text-xs font-semibold text-white shadow-xs hover:bg-blue-700 cursor-pointer"
+                  >
+                    <Plus className="h-4 w-4" />
+                    <span>Thêm đơn mới từ file Word</span>
+                  </button>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                  {filteredRequestTypes.map((type) => (
+                    <div
+                      key={type.id}
+                      className="flex flex-col justify-between rounded-2xl border border-slate-200/80 bg-white p-5 shadow-xs transition-all hover:border-blue-300 hover:shadow-md"
+                    >
+                      <div>
+                        {/* Top card: Mã đơn, Badge danh mục và Switch bật/tắt */}
+                        <div className="flex items-start justify-between gap-2 mb-3">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <span className="rounded-lg bg-blue-50 px-2 py-1 text-[11px] font-semibold text-[#2563EB]">
+                              {type.category}
+                            </span>
+                          </div>
+
+                          <button
+                            type="button"
+                            onClick={() => handleToggleTypeStatus(type.id)}
+                            className="cursor-pointer text-xs font-medium flex items-center gap-1"
+                            title={type.isActive ? 'Đang mở (Bấm để tạm dừng)' : 'Đang đóng (Bấm để mở lại)'}
+                          >
+                            {type.isActive ? (
+                              <span className="inline-flex items-center gap-1 text-emerald-600 font-semibold text-xs">
+                                <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
+                                Đang mở
+                              </span>
+                            ) : (
+                              <span className="inline-flex items-center gap-1 text-slate-400 font-medium text-xs">
+                                <span className="h-2 w-2 rounded-full bg-slate-400" />
+                                Tạm ngưng
+                              </span>
+                            )}
+                          </button>
+                        </div>
+
+                        {/* Tên loại đơn */}
+                        <h3 className="text-base font-bold text-slate-800 leading-snug">
+                          {type.name}
+                        </h3>
+
+                        {/* Mô tả */}
+                        <p className="mt-2 text-xs text-slate-500 line-clamp-2 leading-relaxed">
+                          {type.description}
+                        </p>
+                      </div>
+
+                      {/* Thông tin phòng ban & File mẫu đính kèm */}
+                      <div className="mt-4 pt-3 border-t border-slate-100">
+                        <div className="flex items-center justify-between text-xs text-slate-600 mb-3">
+                          <div className="flex items-center gap-1.5 truncate max-w-[220px]">
+                            <Building2 className="h-3.5 w-3.5 text-slate-400 shrink-0" />
+                            <span className="truncate">{type.departmentName}</span>
+                          </div>
+                          <div className="flex items-center gap-1 text-slate-500 shrink-0">
+                            <Clock className="h-3 w-3" />
+                            <span>SLA: {type.slaDays} ngày</span>
+                          </div>
+                        </div>
+
+                        {/* File mẫu đính kèm */}
+                        <div className="flex items-center justify-between rounded-xl bg-slate-50/80 p-2.5 border border-slate-100 text-xs">
+                          <div className="flex items-center gap-2 truncate pr-2">
+                            <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-blue-100 text-[#2563EB] shrink-0">
+                              {type.isImage ? <ImageIcon className="h-4 w-4" /> : <FileText className="h-4 w-4" />}
+                            </div>
+                            <div className="truncate text-left leading-tight">
+                              <p className="font-semibold text-slate-700 truncate">{type.templateFileName}</p>
+                              <p className="text-[10px] text-slate-400">{type.templateFileSize}</p>
+                            </div>
+                          </div>
+
+                          <div className="flex items-center gap-1.5 shrink-0">
+                            <button
+                              type="button"
+                              onClick={() => setViewingTemplate(type)}
+                              className="flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-xs font-semibold text-[#2563EB] hover:bg-blue-50 transition-colors"
+                            >
+                              <Eye className="h-3.5 w-3.5" />
+                              <span>Xem mẫu</span>
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setTypeToDelete(type)}
+                              className="flex items-center gap-1 rounded-lg border border-red-200 bg-white px-2.5 py-1 text-xs font-semibold text-red-600 hover:bg-red-50 hover:border-red-300 transition-colors"
+                              title="Xóa loại đơn không sử dụng đến"
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                              <span>Xóa</span>
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           )}
 
@@ -1827,52 +1962,64 @@ export default function AdminDashboardPage({ user, logoSrc = DEFAULT_LOGO_SRC, o
                   <span>Dọn dẹp đơn cũ (&gt; 3 tháng)</span>
                 </button>
               </div>
-              <div className="overflow-x-auto">
-                <table className="w-full min-w-[700px] text-left text-sm">
-                  <thead>
-                    <tr className="border-b border-slate-100 text-xs font-semibold text-slate-500">
-                      <th className="py-3 pr-4 pl-2 font-semibold text-slate-700">Loại đơn</th>
-                      <th className="px-4 py-3">Sinh viên</th>
-                      <th className="px-4 py-3">Người/Phòng thụ lý</th>
-                      <th className="px-4 py-3">Trạng thái</th>
-                      <th className="py-3 pr-2 pl-4 text-right">Chi tiết</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100">
-                    {requestsList.map((req) => (
-                      <tr key={req.id} className="transition-colors hover:bg-slate-50/70">
-                        <td className="py-3.5 pr-4 pl-2 font-semibold text-slate-800 whitespace-nowrap">{req.typeName}</td>
-                        <td className="px-4 py-3.5 whitespace-nowrap">{req.studentName} ({req.studentCode})</td>
-                        <td className="px-4 py-3.5 whitespace-nowrap text-xs text-slate-600">
-                          {req.assignedTo ? req.assignedTo.name : 'Chưa phân phát'}
-                        </td>
-                        <td className="px-4 py-3.5 whitespace-nowrap">
-                          <StatusPill status={req.status} label={req.statusLabel} />
-                        </td>
-                        <td className="py-3.5 pr-2 pl-4 text-right whitespace-nowrap">
-                          <div className="flex items-center justify-end gap-1.5">
-                            <button
-                              type="button"
-                              onClick={() => setViewDocRequest(req)}
-                              className="cursor-pointer rounded-lg border border-blue-200 bg-white px-2.5 py-1.5 text-xs font-semibold text-[#2563EB] hover:bg-blue-50"
-                              title="Mở toàn văn văn bản đơn A4"
-                            >
-                              Mở đơn
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => setSelectedRequest(req)}
-                              className="cursor-pointer rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-50"
-                            >
-                              Xem
-                            </button>
-                          </div>
-                        </td>
+              {requestsList.length === 0 ? (
+                <div className="py-16 text-center">
+                  <div className="mx-auto mb-3 flex h-14 w-14 items-center justify-center rounded-2xl bg-slate-100 text-slate-400">
+                    <History className="h-7 w-7 text-slate-400" />
+                  </div>
+                  <h3 className="text-base font-bold text-slate-700">Chưa có lịch sử xử lý hồ sơ nào</h3>
+                  <p className="mt-1 text-xs text-slate-400 max-w-md mx-auto">
+                    Cơ sở dữ liệu trên Supabase đang trống hoặc chưa phát sinh đơn. Mọi hồ sơ sinh viên nộp hoặc hoàn tất xử lý sẽ được lưu trữ và hiển thị tại đây.
+                  </p>
+                </div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full min-w-[700px] text-left text-sm">
+                    <thead>
+                      <tr className="border-b border-slate-100 text-xs font-semibold text-slate-500">
+                        <th className="py-3 pr-4 pl-2 font-semibold text-slate-700">Loại đơn</th>
+                        <th className="px-4 py-3">Sinh viên</th>
+                        <th className="px-4 py-3">Người/Phòng thụ lý</th>
+                        <th className="px-4 py-3">Trạng thái</th>
+                        <th className="py-3 pr-2 pl-4 text-right">Chi tiết</th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {requestsList.map((req) => (
+                        <tr key={req.id} className="transition-colors hover:bg-slate-50/70">
+                          <td className="py-3.5 pr-4 pl-2 font-semibold text-slate-800 whitespace-nowrap">{req.typeName}</td>
+                          <td className="px-4 py-3.5 whitespace-nowrap">{req.studentName} ({req.studentCode})</td>
+                          <td className="px-4 py-3.5 whitespace-nowrap text-xs text-slate-600">
+                            {req.assignedTo ? (req.assignedTo.displayName || req.assignedTo.name) : 'Chưa phân phát'}
+                          </td>
+                          <td className="px-4 py-3.5 whitespace-nowrap">
+                            <StatusPill status={req.status} label={req.statusLabel} />
+                          </td>
+                          <td className="py-3.5 pr-2 pl-4 text-right whitespace-nowrap">
+                            <div className="flex items-center justify-end gap-1.5">
+                              <button
+                                type="button"
+                                onClick={() => setViewDocRequest(req)}
+                                className="cursor-pointer rounded-lg border border-blue-200 bg-white px-2.5 py-1.5 text-xs font-semibold text-[#2563EB] hover:bg-blue-50"
+                                title="Mở toàn văn văn bản đơn A4"
+                              >
+                                Mở đơn
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setSelectedRequest(req)}
+                                className="cursor-pointer rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-600 hover:bg-slate-50"
+                              >
+                                Xem
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
             </section>
           )}
 
@@ -2372,31 +2519,90 @@ export default function AdminDashboardPage({ user, logoSrc = DEFAULT_LOGO_SRC, o
                 )
               ) : (
                 /* Với các đơn mặc định chưa upload file: Render văn bản hành chính mẫu A4 chuẩn Times New Roman */
-                <div className="rounded-xl overflow-hidden border border-slate-200 bg-white shadow-sm p-4 sm:p-6">
-                  <OfficialDocumentView
-                    request={{
-                      id: viewingTemplate.id,
-                      typeName: viewingTemplate.name,
-                      typeCategory: viewingTemplate.category,
-                      studentName: 'NGUYỄN VĂN TIẾN',
-                      studentCode: '61112420189',
-                      phone: '',
-                      dob: '27/09/2006',
-                      pob: 'Hà Nội',
-                      idCardNumber: '001206023295',
-                      idCardDate: '20/06/2021',
-                      idCardPlace: 'Cục Cảnh sát QLHC về TTXH',
-                      faculty: 'Công nghệ - Thiết kế',
-                      major: 'Ứng dụng phần mềm (VIS)',
-                      className: 'UDPM24-01',
-                      campus: 'Trịnh Văn Bô',
-                      trainingSystem: 'Chính quy',
-                      createdAt: new Date().toLocaleDateString('vi-VN'),
-                      reason: viewingTemplate.description,
-                      studentSignature: '',
-                      teacherSignature: '',
-                    }}
-                  />
+                <div className="space-y-3">
+                  <div className="flex flex-wrap items-center justify-between gap-2 bg-white px-4 py-2.5 rounded-xl border border-slate-200 text-xs">
+                    <span className="font-semibold text-slate-700">Chế độ hiển thị mẫu đơn:</span>
+                    <div className="flex items-center gap-1.5 bg-slate-100 p-1 rounded-lg">
+                      <button
+                        type="button"
+                        onClick={() => setTemplateViewMode('blank')}
+                        className={`px-3 py-1 rounded-md font-semibold transition-all cursor-pointer ${
+                          templateViewMode === 'blank'
+                            ? 'bg-white text-blue-600 shadow-xs'
+                            : 'text-slate-600 hover:text-slate-900'
+                        }`}
+                      >
+                        1. Để trắng thông tin (Mẫu phôi trống)
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setTemplateViewMode('fake')}
+                        className={`px-3 py-1 rounded-md font-semibold transition-all cursor-pointer ${
+                          templateViewMode === 'fake'
+                            ? 'bg-white text-blue-600 shadow-xs'
+                            : 'text-slate-600 hover:text-slate-900'
+                        }`}
+                      >
+                        2. Điền nội dung giả lập (Nguyễn Văn A)
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="rounded-xl overflow-hidden border border-slate-200 bg-white shadow-sm p-4 sm:p-6">
+                    <OfficialDocumentView
+                      request={
+                        templateViewMode === 'fake'
+                          ? {
+                              id: viewingTemplate.id,
+                              isTemplate: true,
+                              typeName: viewingTemplate.name,
+                              typeCategory: viewingTemplate.category,
+                              studentName: 'NGUYỄN VĂN A',
+                              studentCode: '61112345678',
+                              phone: '0912345678',
+                              dob: '01/01/2005',
+                              pob: 'Hà Nội',
+                              idCardNumber: '001205012345',
+                              idCardDate: '01/01/2021',
+                              idCardPlace: 'Cục Cảnh sát QLHC về TTXH',
+                              faculty: 'Khoa Công nghệ thông tin',
+                              major: 'Ứng dụng phần mềm',
+                              className: 'CD-CNTT-K24A',
+                              campus: 'Trịnh Văn Bô',
+                              trainingSystem: 'Chính quy',
+                              cohort: 'K24',
+                              createdAt: new Date().toLocaleDateString('vi-VN'),
+                              reason: viewingTemplate.description || 'Kính đề nghị nhà trường cấp giấy xác nhận để hoàn thiện hồ sơ.',
+                              studentSignature: '',
+                              teacherSignature: '',
+                            }
+                          : {
+                              id: viewingTemplate.id,
+                              isTemplate: true,
+                              typeName: viewingTemplate.name,
+                              typeCategory: viewingTemplate.category,
+                              studentName: '',
+                              studentCode: '',
+                              phone: '',
+                              dob: '',
+                              pob: '',
+                              idCardNumber: '',
+                              idCardDate: '',
+                              idCardPlace: '',
+                              faculty: '',
+                              major: '',
+                              className: '',
+                              campus: '',
+                              trainingSystem: 'Chính quy',
+                              cohort: '',
+                              createdAt: new Date().toLocaleDateString('vi-VN'),
+                              reason: '',
+                              studentSignature: '',
+                              teacherSignature: '',
+                            }
+                      }
+                    />
+                  </div>
                 </div>
               )}
 
@@ -2481,7 +2687,7 @@ export default function AdminDashboardPage({ user, logoSrc = DEFAULT_LOGO_SRC, o
                     type="button"
                     onClick={() => {
                       setDispatchType('lecturer');
-                      setTargetId(lecturersList[0]?.id || 'GV002');
+                      setTargetId(dispatchLecturers[0]?.id || '');
                     }}
                     className={`flex items-center gap-2.5 rounded-xl border p-3 text-left transition-all ${dispatchType === 'lecturer'
                         ? 'border-[#2563EB] bg-blue-50/70 text-[#2563EB] ring-1 ring-[#2563EB]'
@@ -2499,7 +2705,7 @@ export default function AdminDashboardPage({ user, logoSrc = DEFAULT_LOGO_SRC, o
                     type="button"
                     onClick={() => {
                       setDispatchType('department');
-                      setTargetId(DEPARTMENTS[0].id);
+                      setTargetId(dispatchDepartments[0]?.id || '');
                     }}
                     className={`flex items-center gap-2.5 rounded-xl border p-3 text-left transition-all ${dispatchType === 'department'
                         ? 'border-[#2563EB] bg-blue-50/70 text-[#2563EB] ring-1 ring-[#2563EB]'
@@ -2526,17 +2732,29 @@ export default function AdminDashboardPage({ user, logoSrc = DEFAULT_LOGO_SRC, o
                   required
                 >
                   {dispatchType === 'lecturer' ? (
-                    lecturersList.map((gv) => (
-                      <option key={gv.id} value={gv.id}>
-                        {gv.name} ({gv.code}) — {gv.role}
+                    dispatchLecturers.length > 0 ? (
+                      dispatchLecturers.map((gv) => (
+                        <option key={gv.id} value={gv.id}>
+                          {gv.label}
+                        </option>
+                      ))
+                    ) : (
+                      <option value="" disabled>
+                        -- Chưa có Giảng viên trong Database --
                       </option>
-                    ))
+                    )
                   ) : (
-                    DEPARTMENTS.map((dept) => (
-                      <option key={dept.id} value={dept.id}>
-                        {dept.name} ({dept.code}) — {dept.officer}
+                    dispatchDepartments.length > 0 ? (
+                      dispatchDepartments.map((dept) => (
+                        <option key={dept.id} value={dept.id}>
+                          {dept.label}
+                        </option>
+                      ))
+                    ) : (
+                      <option value="" disabled>
+                        -- Chưa có Phòng ban trong Database --
                       </option>
-                    ))
+                    )
                   )}
                 </select>
               </div>
@@ -2647,7 +2865,7 @@ export default function AdminDashboardPage({ user, logoSrc = DEFAULT_LOGO_SRC, o
                     <Check className="h-3.5 w-3.5 text-blue-600" />
                     Đơn vị đang thụ lý giải quyết
                   </div>
-                  <div className="text-sm font-bold text-slate-800">{selectedRequest.assignedTo.name}</div>
+                  <div className="text-sm font-bold text-slate-800">{selectedRequest.assignedTo.displayName || selectedRequest.assignedTo.name}</div>
                   <div className="text-xs text-slate-600">Ghi chú: "{selectedRequest.assignedTo.note}"</div>
                   <div className="text-xs text-blue-700 font-medium">Hạn xử lý: {selectedRequest.assignedTo.deadline}</div>
                 </div>

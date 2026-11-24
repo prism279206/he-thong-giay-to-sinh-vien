@@ -60,7 +60,7 @@ ON CONFLICT (id) DO UPDATE SET
   ma_can_bo = 'admincdvmhn',
   don_vi = 'Ban Tiếp nhận';
 
--- 2.2. Đồng bộ tài khoản Giảng viên Đỗ Thị Hương (staff)
+-- 2.2. Đồng bộ tài khoản Cán bộ Đỗ Thị Hương (staff - Phòng đào tạo)
 INSERT INTO public.profiles (id, email, ho_ten, role, ma_can_bo, don_vi)
 SELECT 
   id, 
@@ -68,39 +68,56 @@ SELECT
   'Đỗ Thị Hương', 
   'staff', 
   'GV002', 
-  'Giảng viên - GVCN'
+  'Phòng đào tạo'
 FROM auth.users 
 WHERE email = 'huong.do1@caodangvietmyhanoi.edu.vn'
 ON CONFLICT (id) DO UPDATE SET
   role = 'staff',
   ho_ten = 'Đỗ Thị Hương',
   ma_can_bo = 'GV002',
-  don_vi = 'Giảng viên - GVCN';
+  don_vi = 'Phòng đào tạo';
 
--- 3. Cập nhật bảng public.requests: Bỏ ràng buộc FK profiles, hỗ trợ sinh viên nộp từ CMS
+-- 3. Cập nhật bảng public.requests: Bỏ ràng buộc FK profiles và bật ON DELETE CASCADE cho request_types
 ALTER TABLE public.requests DROP CONSTRAINT IF EXISTS requests_student_id_fkey;
+ALTER TABLE public.requests DROP CONSTRAINT IF EXISTS requests_request_type_id_fkey;
+ALTER TABLE public.requests DROP CONSTRAINT IF EXISTS requests_current_step_id_fkey;
+
+ALTER TABLE public.requests 
+  ADD CONSTRAINT requests_request_type_id_fkey 
+  FOREIGN KEY (request_type_id) REFERENCES public.request_types(id) ON DELETE CASCADE;
+
+ALTER TABLE public.requests 
+  ADD CONSTRAINT requests_current_step_id_fkey 
+  FOREIGN KEY (current_step_id) REFERENCES public.workflow_steps(id) ON DELETE SET NULL;
 
 ALTER TABLE public.requests ADD COLUMN IF NOT EXISTS ma_sinh_vien text;
 ALTER TABLE public.requests ADD COLUMN IF NOT EXISTS ho_ten_sinh_vien text;
+ALTER TABLE public.requests ADD COLUMN IF NOT EXISTS lop text;
+ALTER TABLE public.requests ADD COLUMN IF NOT EXISTS khoa text;
 ALTER TABLE public.requests ADD COLUMN IF NOT EXISTS don_vi_xu_ly text;
 ALTER TABLE public.requests ADD COLUMN IF NOT EXISTS email_sinh_vien text;
+
+-- Kích hoạt Realtime cho bảng requests để web cập nhật tức thì khi có đơn mới
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_publication_tables 
+    WHERE pubname = 'supabase_realtime' AND schemaname = 'public' AND tablename = 'requests'
+  ) THEN
+    ALTER PUBLICATION supabase_realtime ADD TABLE public.requests;
+  END IF;
+EXCEPTION WHEN OTHERS THEN
+  NULL;
+END $$;
 
 -- 4. Cập nhật bảng public.request_step_logs: Thêm actor_name và bỏ ràng buộc FK actor_id
 ALTER TABLE public.request_step_logs DROP CONSTRAINT IF EXISTS request_step_logs_actor_id_fkey;
 ALTER TABLE public.request_step_logs ADD COLUMN IF NOT EXISTS actor_name text;
 
--- 5. Khởi tạo 8 loại đơn chuẩn vào request_types (nếu chưa có)
-INSERT INTO public.request_types (id, ten_loai_don, danh_muc, mo_ta, thoi_han_ngay, dang_hoat_dong)
-VALUES
-  ('d0000000-0000-0000-0000-000000000001'::uuid, 'Đơn xin cấp xác nhận học sinh - sinh viên', 'Xác nhận học tập', 'Dùng để xác nhận đang theo học tại trường để vay vốn ngân hàng, tạm hoãn nghĩa vụ quân sự, bổ sung hồ sơ xin việc...', 2, true),
-  ('d0000000-0000-0000-0000-000000000002'::uuid, 'Đơn xin cấp bảng điểm', 'Học vụ & Đào tạo', 'Đề nghị cấp bảng điểm quá trình học tập các học kỳ hoặc bảng điểm tốt nghiệp có xác nhận của nhà trường.', 3, true),
-  ('d0000000-0000-0000-0000-000000000003'::uuid, 'Đơn xin miễn giảm học phí', 'Học phí & Tài chính', 'Dành cho sinh viên thuộc diện chính sách, con thương binh liệt sĩ, hộ nghèo hoặc các đối tượng được hỗ trợ theo quy định.', 5, true),
-  ('d0000000-0000-0000-0000-000000000004'::uuid, 'Đơn xin bảo lưu kết quả học tập', 'Học vụ & Đào tạo', 'Đề nghị tạm dừng tiến độ học và bảo lưu kết quả học tập tối đa 02 học kỳ vì lý do sức khỏe hoặc gia đình.', 3, true),
-  ('d0000000-0000-0000-0000-000000000005'::uuid, 'Đơn xin phúc khảo bài thi', 'Khảo thí & Điểm', 'Đề nghị rút bài thi và thành lập ban chấm phúc khảo điểm bài thi kết thúc học phần trong thời hạn 15 ngày.', 7, true),
-  ('d0000000-0000-0000-0000-000000000006'::uuid, 'Đơn xin tạm hoãn thi kết thúc học phần', 'Khảo thí & Điểm', 'Đề nghị hoãn thi kết thúc môn vì lý do ốm đau cấp cứu hoặc trường hợp bất khả kháng, có giấy viện kèm theo.', 2, true),
-  ('d0000000-0000-0000-0000-000000000007'::uuid, 'Đơn đăng ký chỗ ở Ký túc xá', 'Công tác sinh viên', 'Đăng ký phòng ở nội trú tại khu ký túc xá sinh viên dành cho tân sinh viên hoặc sinh viên ở xa.', 2, true),
-  ('d0000000-0000-0000-0000-000000000008'::uuid, 'Đăng ký xác nhận làm vé tháng xe buýt', 'Công tác sinh viên', 'Cấp tem và giấy xác nhận phục vụ đăng ký vé tháng xe buýt liên tỉnh và nội thành Hà Nội.', 2, true)
-ON CONFLICT (ten_loai_don) DO NOTHING;
+-- 5. (TÙY CHỌN) Danh mục 8 loại đơn mẫu
+-- Lưu ý: Nếu bạn muốn tự tạo và số hóa các mẫu đơn từ file Word (.docx) của riêng mình, 
+-- không cần chạy lệnh INSERT dưới đây để tránh trùng lặp.
+-- INSERT INTO public.request_types (id, ten_loai_don, danh_muc, mo_ta, thoi_han_ngay, dang_hoat_dong) ...
 
 -- 6. Thiết lập chính sách bảo mật RLS linh hoạt
 
@@ -146,6 +163,11 @@ ON public.request_step_logs FOR DELETE
 USING (true);
 
 -- 6.3. Bảng request_types:
+ALTER TABLE public.request_types ADD COLUMN IF NOT EXISTS don_vi_phu_trach text;
+ALTER TABLE public.request_types ADD COLUMN IF NOT EXISTS file_mau_url text;
+ALTER TABLE public.request_types ADD COLUMN IF NOT EXISTS file_mau_ten text;
+ALTER TABLE public.request_types ADD COLUMN IF NOT EXISTS cau_hinh jsonb DEFAULT '{}'::jsonb;
+
 DROP POLICY IF EXISTS "request_types_select_policy" ON public.request_types;
 DROP POLICY IF EXISTS "request_types_admin_all" ON public.request_types;
 
@@ -155,7 +177,40 @@ USING (true);
 
 CREATE POLICY "request_types_admin_all"
 ON public.request_types FOR ALL
+USING (true)
+WITH CHECK (true);
+
+-- Kích hoạt Realtime cho request_types để web tự động cập nhật khi thêm/xóa loại đơn
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_publication_tables 
+    WHERE pubname = 'supabase_realtime' AND schemaname = 'public' AND tablename = 'request_types'
+  ) THEN
+    ALTER PUBLICATION supabase_realtime ADD TABLE public.request_types;
+  END IF;
+EXCEPTION WHEN OTHERS THEN
+  NULL;
+END $$;
+
+-- 6.4. Bảng profiles: Cho phép đọc thông tin cán bộ / giảng viên để phục vụ tiếp nhận & điều phối
+DROP POLICY IF EXISTS "profiles_select_policy" ON public.profiles;
+CREATE POLICY "profiles_select_policy"
+ON public.profiles FOR SELECT
 USING (true);
+
+-- 6.5. Kích hoạt Realtime cho bảng profiles để giao diện tự cập nhật khi cán bộ/giảng viên thay đổi trên database
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_publication_tables 
+    WHERE pubname = 'supabase_realtime' AND schemaname = 'public' AND tablename = 'profiles'
+  ) THEN
+    ALTER PUBLICATION supabase_realtime ADD TABLE public.profiles;
+  END IF;
+EXCEPTION WHEN OTHERS THEN
+  NULL;
+END $$;
 
 -- ========================================================
 -- 7. TỰ ĐỘNG DỌN DẸP ĐƠN ĐÃ HOÀN TẤT QUÁ 3 THÁNG

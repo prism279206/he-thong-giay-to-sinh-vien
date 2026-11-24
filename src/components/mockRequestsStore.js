@@ -24,11 +24,32 @@ export const DEFAULT_MOCK_SIGNATURE =
 export const DEFAULT_TEACHER_SIGNATURE =
   'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 220 80" width="220" height="80"><path d="M25,48 Q55,20 85,42 T135,28 Q165,15 195,50 M60,42 Q90,65 125,25 T175,45" fill="none" stroke="%237C3AED" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/><text x="65" y="72" font-family="sans-serif" font-size="11" font-weight="bold" fill="%236D28D9">Đỗ Thị Hương</text></svg>';
 
-const STORAGE_KEY = 'vmh_shared_requests_v6';
+const STORAGE_KEY = 'vmh_shared_requests_v8';
+
+// Tự động quét dọn toàn bộ các khóa bộ nhớ cũ (v1 -> v7) để loại bỏ dữ liệu ảo
+if (typeof window !== 'undefined' && window.localStorage) {
+  try {
+    ['vmh_shared_requests_v1', 'vmh_shared_requests_v2', 'vmh_shared_requests_v3', 'vmh_shared_requests_v4', 'vmh_shared_requests_v5', 'vmh_shared_requests_v6', 'vmh_shared_requests_v7'].forEach((k) => {
+      window.localStorage.removeItem(k);
+    });
+  } catch {}
+}
 
 // Dữ liệu đơn khởi tạo dùng chung giữa Sinh viên -> Quản trị (Quản trị viên) -> Giảng viên
 // Mặc định khởi tạo trống trơn (không chứa đơn mẫu cũ), đơn mới do sinh viên nộp hoặc lưu từ DB
 export const INITIAL_SHARED_REQUESTS = [];
+
+/**
+ * Xóa sạch danh sách đơn trong cache
+ */
+export function clearStoredRequests() {
+  try {
+    localStorage.removeItem(STORAGE_KEY);
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new Event('vmh_requests_updated'));
+    }
+  } catch {}
+}
 
 /**
  * Lấy danh sách đơn từ localStorage (nếu chưa có thì lấy từ danh sách mặc định)
@@ -135,7 +156,7 @@ export function dispatchRequestByAdmin(requestId, assignedInfo, urgency, deadlin
           action: 'Tiếp nhận & Phân phát',
           actor: 'Quản trị viên',
           time: timeStr,
-          note: `Chuyển đơn tới ${assignedInfo.name}. Ghi chú: ${note || 'Không có'}`,
+          note: `Chuyển đơn tới ${assignedInfo.displayName || assignedInfo.name}. Ghi chú: ${note || 'Không có'}`,
         },
       ];
 
@@ -569,84 +590,10 @@ export function finalizeAndNotifyStudentByAdmin(
   return updated;
 }
 
-export const REQUEST_TYPES_STORAGE_KEY = 'vmh_request_types_store_v4';
+export const REQUEST_TYPES_STORAGE_KEY = 'vmh_request_types_store_v6';
 
-export const INITIAL_REQUEST_TYPES = [
-  {
-    id: 'rt-confirm-student',
-    code: 'XAC_NHAN_SV',
-    name: 'Đơn xin cấp xác nhận học sinh - sinh viên',
-    category: 'Xác nhận học tập',
-    departmentName: 'Phòng Đào tạo & Bộ phận Khảo thí',
-    slaDays: 2,
-    description: 'Dùng để xác nhận đang theo học tại trường để vay vốn ngân hàng, tạm hoãn nghĩa vụ quân sự, bổ sung hồ sơ thực tập...',
-    isActive: true,
-    hasTemplateFile: true,
-    templateFileName: 'Mau_Don_Xac_Nhan_HSSV.pdf',
-    templateFileSize: '124 KB',
-    templateFileUrl: null,
-    fields: [],
-  },
-  {
-    id: 'rt-transcript',
-    code: 'CAP_BANG_DIEM',
-    name: 'Đơn xin cấp bảng điểm học tập',
-    category: 'Học vụ & Đào tạo',
-    departmentName: 'Phòng Đào tạo & Bộ phận Khảo thí',
-    slaDays: 3,
-    description: 'Đề nghị cấp bảng điểm học tập toàn khóa, theo năm học hoặc theo từng học kỳ có xác nhận của nhà trường.',
-    isActive: true,
-    hasTemplateFile: true,
-    templateFileName: 'Mau_Don_Xin_Cap_Bang_Diem.pdf',
-    templateFileSize: '98 KB',
-    templateFileUrl: null,
-    fields: [
-      { id: 'f_so_luong', label: 'Số lượng bản cần cấp', type: 'number', required: true, placeholder: 'VD: 2' },
-      { id: 'f_loai_bang_diem', label: 'Loại bảng điểm (Toàn khóa / Từng kỳ)', type: 'text', required: true, placeholder: 'VD: Toàn khóa tích lũy' },
-      { id: 'f_muc_dich', label: 'Mục đích sử dụng', type: 'textarea', required: true, placeholder: 'VD: Bổ sung hồ sơ xin thực tập doanh nghiệp...' },
-    ],
-  },
-  {
-    id: 'rt-graduation-cert',
-    code: 'CAP_CHUNG_NHAN_TOT_NGHIEP',
-    name: 'Đơn xin cấp giấy chứng nhận tốt nghiệp tạm thời',
-    category: 'Xác nhận học tập',
-    departmentName: 'Phòng Đào tạo Trường Cao đẳng Việt Mỹ',
-    slaDays: 5,
-    description: 'Dành cho sinh viên đã hoàn thành chương trình đào tạo và đủ điều kiện tốt nghiệp, chờ nhận bằng chính thức.',
-    isActive: true,
-    hasTemplateFile: true,
-    templateFileName: 'Mau_Don_Xin_Cap_CNTN_Tam_Thoi.pdf',
-    templateFileSize: '110 KB',
-    templateFileUrl: null,
-    fields: [
-      { id: 'f_so_luong_cntn', label: 'Số lượng bản cần cấp', type: 'number', required: true, placeholder: 'VD: 1' },
-      { id: 'f_dot_tot_nghiep', label: 'Đợt xét tốt nghiệp', type: 'text', required: false, placeholder: 'VD: Đợt 1 năm 2026' },
-    ],
-  },
-  {
-    id: 'rt-recheck-exam',
-    code: 'PHUC_KHAO',
-    name: 'Đơn xin chấm phúc khảo bài thi',
-    category: 'Khảo thí & Điểm',
-    departmentName: 'Phòng Đào tạo & Bộ phận Khảo thí',
-    slaDays: 7,
-    description: 'Đề nghị Bộ phận khảo thí xem xét chấm lại bài thi kết thúc học phần trong thời hạn 15 ngày kể từ khi công bố điểm.',
-    isActive: true,
-    hasTemplateFile: true,
-    templateFileName: 'Mau_Don_Xin_Phuc_Khao_Bai_Thi.pdf',
-    templateFileSize: '112 KB',
-    templateFileUrl: null,
-    fields: [
-      { id: 'f_mon_thi', label: 'Tên môn thi / học phần', type: 'text', required: true, placeholder: 'VD: Lập trình Web nâng cao' },
-      { id: 'f_ma_mon', label: 'Mã học phần', type: 'text', required: false, placeholder: 'VD: WEB201' },
-      { id: 'f_diem_cu', label: 'Điểm đã công bố', type: 'text', required: true, placeholder: 'VD: 4.5' },
-      { id: 'f_ngay_thi', label: 'Ngày thi', type: 'date', required: true },
-      { id: 'f_ca_thi', label: 'Ca thi / Phòng thi', type: 'text', required: false, placeholder: 'VD: Ca 2, P.302' },
-      { id: 'f_ly_do', label: 'Lý do xin chấm phúc khảo', type: 'textarea', required: true, placeholder: 'Nêu rõ bài làm hoặc thắc mắc về điểm...' },
-    ],
-  },
-];
+// Danh mục loại đơn mặc định: Trống trơn để đồng bộ 100% từ bảng request_types trên Supabase
+export const INITIAL_REQUEST_TYPES = [];
 
 /**
  * Lấy danh sách các loại đơn từ localStorage
@@ -655,13 +602,32 @@ export function getStoredRequestTypes() {
   try {
     const raw = localStorage.getItem(REQUEST_TYPES_STORAGE_KEY);
     if (!raw) {
-      localStorage.setItem(REQUEST_TYPES_STORAGE_KEY, JSON.stringify(INITIAL_REQUEST_TYPES));
-      return INITIAL_REQUEST_TYPES;
+      localStorage.setItem(REQUEST_TYPES_STORAGE_KEY, JSON.stringify([]));
+      return [];
     }
     const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) ? parsed : INITIAL_REQUEST_TYPES;
+    return Array.isArray(parsed) ? parsed : [];
   } catch {
-    return INITIAL_REQUEST_TYPES;
+    return [];
+  }
+}
+
+/**
+ * Xóa sạch toàn bộ bộ nhớ cache các loại đơn cũ trong localStorage
+ */
+export function clearStoredRequestTypes() {
+  try {
+    localStorage.removeItem(REQUEST_TYPES_STORAGE_KEY);
+    localStorage.removeItem('vmh_request_types_store_v5');
+    localStorage.removeItem('vmh_request_types_store_v4');
+    localStorage.removeItem('vmh_request_types_store_v3');
+    localStorage.removeItem('vmh_request_types_store_v2');
+    localStorage.setItem(REQUEST_TYPES_STORAGE_KEY, JSON.stringify([]));
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new Event('vmh_request_types_updated'));
+    }
+  } catch (err) {
+    console.warn('Lỗi khi xóa bộ nhớ loại đơn cũ:', err);
   }
 }
 

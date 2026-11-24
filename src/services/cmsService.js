@@ -38,7 +38,7 @@ export function formatCccd(cccd) {
 
 /**
  * Chuẩn hóa tên tiếng Việt sang không dấu viết thường
- * Ví dụ: "Nguyễn Văn Tiến" -> "tien"
+ * Ví dụ: "Nguyễn Văn A" -> "a"
  */
 export function extractCleanStudentName(fullName) {
   if (!fullName) return '';
@@ -55,8 +55,8 @@ export function extractCleanStudentName(fullName) {
 /**
  * Lấy phần số của email từ mã sinh viên:
  * Quy tắc trường Cao đẳng Việt Mỹ Hà Nội:
- * Mã sinh viên 11 số (ví dụ: "61112420189") -> bỏ tiền tố mã trường "611", lấy "12420189"
- * Nếu mã đã là đuôi số 8 ký tự ("12420189") -> giữ nguyên "12420189"
+ * Mã sinh viên 11 số (ví dụ: "61112345678") -> bỏ tiền tố mã trường "611", lấy "12345678"
+ * Nếu mã đã là đuôi số 8 ký tự ("12345678") -> giữ nguyên "12345678"
  */
 export function extractStudentCodeSuffix(studentCode) {
   if (!studentCode) return '';
@@ -74,8 +74,8 @@ export function extractStudentCodeSuffix(studentCode) {
 
 /**
  * Tìm kiếm sinh viên trong kho dữ liệu mẫu theo:
- * - Mã sinh viên đầy đủ (ví dụ: 61112420189)
- * - Đuôi mã sinh viên dùng trong email (ví dụ: 12420189)
+ * - Mã sinh viên đầy đủ (ví dụ: 61112345678)
+ * - Đuôi mã sinh viên dùng trong email (ví dụ: 12345678)
  */
 export function findMockStudent(studentCodeOrSuffix) {
   if (!studentCodeOrSuffix) return null;
@@ -112,7 +112,7 @@ export function findMockStudent(studentCodeOrSuffix) {
 /**
  * Tự động tạo email trường cho sinh viên theo đúng quy tắc:
  * [Tên không dấu][Mã số từ ký tự thứ 4]@caodangvietmyhanoi.edu.vn
- * Ví dụ: "Nguyễn Văn Tiến", "61112420189" -> "tien12420189@caodangvietmyhanoi.edu.vn"
+ * Ví dụ: "Nguyễn Văn A", "61112345678" -> "a12345678@caodangvietmyhanoi.edu.vn"
  */
 export function buildExpectedStudentEmail(fullName, studentCode) {
   const namePart = extractCleanStudentName(fullName);
@@ -174,7 +174,7 @@ export function verifyStudentEmailMatch(inputEmail, studentProfile) {
 
 /**
  * Lấy hồ sơ của một sinh viên theo mã sinh viên hoặc đuôi mã trong email
- * @param {string} studentCode Mã sinh viên (ví dụ: "61112420189" hoặc "12420189")
+ * @param {string} studentCode Mã sinh viên (ví dụ: "61112345678" hoặc "12345678")
  * @param {object} [options] Tùy chọn bổ sung (ví dụ: expectedName)
  * @returns {Promise<{ data: object|null, error: string|null, isMock: boolean }>}
  */

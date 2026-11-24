@@ -15,6 +15,60 @@ import {
 } from '../components/mockRequestsStore';
 
 /**
+ * Chuyển đổi trạng thái đơn sang nhãn tiếng Việt
+ */
+function getStatusLabel(status) {
+  switch (status) {
+    case 'pending':
+      return 'Chờ tiếp nhận';
+    case 'in_progress':
+      return 'Đang xử lý';
+    case 'teacher_approved':
+      return 'GV đã duyệt';
+    case 'completed':
+      return 'Đã hoàn thành';
+    case 'rejected':
+      return 'Bị từ chối';
+    default:
+      return 'Đang xử lý';
+  }
+}
+
+/**
+ * Ánh xạ dữ liệu thô từ bảng requests trên Supabase sang định dạng chuẩn dùng trên giao diện
+ */
+export function mapDatabaseRequestToFrontend(row) {
+  if (!row) return null;
+  const d = row.du_lieu_don || {};
+  return {
+    id: row.id,
+    typeId: row.request_type_id,
+    typeName: row.request_types?.ten_loai_don || d.typeName || 'Thủ tục hành chính',
+    typeCategory: row.request_types?.danh_muc || d.typeCategory || 'Học vụ & Đào tạo',
+    studentId: row.student_id,
+    studentName: row.ho_ten_sinh_vien || d.studentName || '',
+    studentCode: row.ma_sinh_vien || d.studentCode || '',
+    className: d.className || '',
+    faculty: d.faculty || '',
+    major: d.major || '',
+    cohort: d.cohort || '',
+    studentEmail: row.email_sinh_vien || d.studentEmail || '',
+    status: row.trang_thai || 'pending',
+    statusLabel: getStatusLabel(row.trang_thai),
+    assignedTo: d.assignedTo || (row.don_vi_xu_ly ? { name: row.don_vi_xu_ly, displayName: row.don_vi_xu_ly } : null),
+    urgency: d.urgency || 'normal',
+    deadline: d.deadline || null,
+    studentSignature: row.chu_ky_sinh_vien || d.studentSignature || '',
+    teacherSignature: row.chu_ky_giang_vien || d.teacherSignature || '',
+    duLieuDon: d,
+    formData: d.formData || d,
+    logs: d.logs || [],
+    createdAt: row.created_at ? new Date(row.created_at).toLocaleDateString('vi-VN') : (d.createdAt || ''),
+    closedAt: row.closed_at || null,
+  };
+}
+
+/**
  * Nộp đơn trực tuyến mới
  * @param {object} payload Thông tin lá đơn và chữ ký sinh viên
  */
@@ -64,8 +118,6 @@ export async function submitRequest(payload) {
       id: payload.id,
       ma_sinh_vien: payload.studentCode || '',
       ho_ten_sinh_vien: payload.studentName || '',
-      lop: payload.className || '',
-      khoa: payload.faculty || '',
       email_sinh_vien: payload.studentEmail || '',
       request_type_id: requestTypeId,
       current_step_id: currentStepId,
@@ -114,7 +166,7 @@ export async function listMyRequests(studentIdOrCode) {
   try {
     let query = supabase
       .from('requests')
-      .select('*, request_types(ten_loai_don)')
+      .select('*, request_types(ten_loai_don, danh_muc, thoi_han_ngay)')
       .order('created_at', { ascending: false });
 
     if (studentIdOrCode) {
@@ -127,8 +179,12 @@ export async function listMyRequests(studentIdOrCode) {
 
     const { data, error } = await query;
 
-    if (!error && data && data.length > 0) {
-      return { data, error: null };
+    if (!error && Array.isArray(data)) {
+      const mapped = data.map(mapDatabaseRequestToFrontend);
+      return { data: mapped, error: null };
+    }
+    if (error) {
+      console.warn('Lỗi lấy đơn từ Supabase:', error.message);
     }
   } catch (err) {
     console.warn('Lỗi lấy đơn từ Supabase:', err.message);
@@ -145,11 +201,15 @@ export async function listStaffRequests() {
   try {
     const { data, error } = await supabase
       .from('requests')
-      .select('*, request_types(ten_loai_don)')
+      .select('*, request_types(ten_loai_don, danh_muc, thoi_han_ngay)')
       .order('created_at', { ascending: false });
 
-    if (!error && data && data.length > 0) {
-      return { data, error: null };
+    if (!error && Array.isArray(data)) {
+      const mapped = data.map(mapDatabaseRequestToFrontend);
+      return { data: mapped, error: null };
+    }
+    if (error) {
+      console.warn('Lỗi lấy hàng đợi từ Supabase:', error.message);
     }
   } catch (err) {
     console.warn('Lỗi lấy hàng đợi từ Supabase:', err.message);
@@ -157,6 +217,34 @@ export async function listStaffRequests() {
 
   // Fallback: Lấy từ local store
   return { data: getStoredRequests(), error: null };
+}
+
+/**
+ * Lắng nghe thay đổi Realtime trên bảng requests của Supabase
+ */
+export function subscribeAllRequestsChange(callback) {
+  try {
+    const channel = supabase
+      .channel('realtime:public:requests')
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'requests' },
+        async () => {
+          const res = await listStaffRequests();
+          if (res?.data !== null && typeof callback === 'function') {
+            callback(res.data);
+          }
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  } catch (err) {
+    console.warn('Lỗi đăng ký Realtime requests:', err);
+    return () => {};
+  }
 }
 
 /**
@@ -168,14 +256,14 @@ export async function dispatchRequest(requestId, targetInfo, urgency) {
       .from('requests')
       .update({
         trang_thai: 'in_progress',
-        current_step_id: 'c0000000-0000-0000-0000-000000000003',
+        don_vi_xu_ly: targetInfo.displayName || targetInfo.name,
       })
       .eq('id', requestId);
 
     await supabase.from('request_step_logs').insert([
       {
         request_id: requestId,
-        hanh_dong: `Phân phát tới: ${targetInfo.name}`,
+        hanh_dong: `Phân phát tới: ${targetInfo.displayName || targetInfo.name}`,
         ghi_chu: targetInfo.note || '',
       },
     ]);
@@ -298,30 +386,134 @@ export async function cancelAndRemoveRequest(requestId) {
 }
 
 /**
+ * Lấy toàn bộ danh mục loại đơn thực tế từ bảng request_types trên Supabase
+ */
+export async function fetchRequestTypesFromSupabase() {
+  try {
+    const { data, error } = await supabase
+      .from('request_types')
+      .select('*')
+      .order('created_at', { ascending: false });
+
+    if (error) {
+      console.warn('Lỗi tải danh mục request_types từ Supabase:', error.message);
+      return { data: null, error };
+    }
+
+    const mapped = (data || []).map((row) => ({
+      id: row.id,
+      name: row.ten_loai_don,
+      category: row.danh_muc || 'Học vụ & Đào tạo',
+      departmentName: row.don_vi_phu_trach || row.danh_muc || 'Phòng ban Chức năng',
+      slaDays: row.thoi_han_ngay || 3,
+      description: row.mo_ta || '',
+      isActive: row.dang_hoat_dong !== false,
+      hasTemplateFile: Boolean(row.file_mau_url),
+      templateFileName: row.file_mau_ten || '',
+      templateFileSize: row.cau_hinh?.file_size || '—',
+      templateFileUrl: row.file_mau_url || null,
+      isImage: Boolean(row.cau_hinh?.isImage),
+      fields: row.cau_hinh?.fields || [],
+      cmsFields: row.cau_hinh?.cmsFields || [],
+      createdAt: row.created_at ? new Date(row.created_at).toLocaleDateString('vi-VN') : '',
+    }));
+
+    return { data: mapped, error: null };
+  } catch (err) {
+    console.warn('Lỗi kết nối Supabase khi tải request_types:', err.message);
+    return { data: null, error: err };
+  }
+}
+
+/**
+ * Lắng nghe thay đổi Realtime trên bảng request_types của Supabase
+ */
+export function subscribeRequestTypesChange(callback) {
+  try {
+    const channel = supabase
+      .channel('realtime:public:request_types')
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'request_types' },
+        async () => {
+          const res = await fetchRequestTypesFromSupabase();
+          if (res?.data !== null && typeof callback === 'function') {
+            callback(res.data);
+          }
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  } catch (err) {
+    console.warn('Lỗi đăng ký Realtime request_types:', err);
+    return () => {};
+  }
+}
+
+/**
  * Thêm loại đơn mới lên Supabase (Admin)
  */
 export async function createRequestTypeOnSupabase(typeItem) {
   try {
-    const { data, error } = await supabase
+    // 1. Thử chèn đầy đủ thông tin (nếu bảng đã có các cột cấu hình mở rộng)
+    const fullPayload = {
+      ten_loai_don: typeItem.name,
+      danh_muc: typeItem.category,
+      mo_ta: typeItem.description,
+      thoi_han_ngay: typeItem.slaDays,
+      dang_hoat_dong: true,
+      don_vi_phu_trach: typeItem.departmentName || null,
+      file_mau_url: typeItem.templateFileUrl || null,
+      file_mau_ten: typeItem.templateFileName || null,
+      cau_hinh: {
+        fields: typeItem.fields || [],
+        cmsFields: typeItem.cmsFields || [],
+        isImage: typeItem.isImage || false,
+        file_size: typeItem.templateFileSize || '—',
+      },
+    };
+
+    let result = await supabase
       .from('request_types')
-      .insert([
-        {
-          ten_loai_don: typeItem.name,
-          danh_muc: typeItem.category,
-          mo_ta: typeItem.description,
-          thoi_han_ngay: typeItem.slaDays,
-          dang_hoat_dong: true,
-        },
-      ])
+      .insert([fullPayload])
       .select()
       .maybeSingle();
 
-    if (error) {
-      console.warn('Lỗi khi thêm request_type vào Supabase:', error.message);
+    // 2. Nếu thất bại do thiếu cột mở rộng (don_vi_phu_trach, cau_hinh...),
+    // tự động chuyển sang chèn các cột cơ bản chuẩn để luôn lưu thành công 100% vào database
+    if (result.error && (
+      result.error.message?.includes('column') ||
+      result.error.message?.includes('schema cache') ||
+      result.error.code === '42703' ||
+      result.error.code === 'PGRST204'
+    )) {
+      console.warn('Bảng request_types chưa có cột mở rộng, tự động lưu theo schema cơ bản:', result.error.message);
+      const basicPayload = {
+        ten_loai_don: typeItem.name,
+        danh_muc: typeItem.category,
+        mo_ta: typeItem.description,
+        thoi_han_ngay: typeItem.slaDays,
+        dang_hoat_dong: true,
+      };
+
+      result = await supabase
+        .from('request_types')
+        .insert([basicPayload])
+        .select()
+        .maybeSingle();
     }
-    return { data, error };
+
+    if (result.error) {
+      console.error('Lỗi khi thêm request_type vào Supabase:', result.error.message);
+    } else {
+      console.log('Đã lưu thành công loại đơn vào Supabase database:', result.data);
+    }
+    return result;
   } catch (err) {
-    console.warn('Lỗi kết nối Supabase khi thêm loại đơn:', err.message);
+    console.error('Lỗi kết nối Supabase khi thêm loại đơn:', err.message);
     return { data: null, error: err };
   }
 }
