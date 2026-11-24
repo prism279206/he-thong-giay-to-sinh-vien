@@ -10,6 +10,13 @@
 | 2026-11-24 | Sinh viên chỉ xác thực qua CMS API trường, không lưu tài khoản sinh viên vào Supabase | Trường có hàng nghìn sinh viên biến động liên tục; Supabase Auth và profiles chỉ quản lý Cán bộ & Giảng viên để duyệt và quản trị |
 | 2026-11-24 | Xóa đơn completed sau 3 tháng và cho phép sinh viên hủy đơn lập tức | Giảm tải database, bảo vệ quyền riêng tư và dọn dẹp đơn không còn nhu cầu |
 | 2026-11-24 | Chuẩn hóa 4 đơn vị nhân sự tiếp nhận & xử lý hồ sơ | 1. Phòng Đào tạo, 2. Phòng Công tác sinh viên, 3. Phòng Khảo thí, 4. Giảng viên - GVCN |
+| 2026-11-24 | Bắt buộc Giảng viên phải ký tay/tải ảnh chữ ký thực tế trước khi xác nhận duyệt đơn | Đảm bảo tính pháp lý và trách nhiệm thực tế, tránh phê duyệt tự động thiếu chữ ký |
+| 2026-11-24 | Bỏ khối dấu đỏ số hóa trên văn bản A4, chỉ xác nhận trạng thái hoàn thành | Văn bản A4 tuân thủ chuẩn văn bản hành chính gọn gàng, hệ thống thông báo trạng thái qua cổng portal |
+| 2026-11-24 | Khóa quyền ký lại của Giảng viên và cấp quyền xóa chữ ký cho Quản trị viên | Đảm bảo tính bất biến của chữ ký đã duyệt, chỉ Quản trị viên mới có thẩm quyền hủy/thu hồi để GV ký lại |
+| 2026-11-24 | Đặt @page { margin: 0mm !important } và tạm thời xóa document.title khi in | Loại bỏ triệt để header & footer của trình duyệt (tiêu đề, localhost, ngày giờ, số trang), bảo toàn lề chuẩn A4 qua padding văn bản |
+| 2026-11-24 | Bỏ chú thích '(Đã ký duyệt điện tử)' và '(Chữ ký số cá nhân)' dưới chữ ký trên bản A4 | Giữ nguyên bản in thực tế chỉ hiển thị ảnh chữ ký và họ tên chuẩn hành chính |
+| 2026-11-24 | Xóa bỏ hoàn toàn mã đơn dưới tiêu đề và bỏ khung viền xám ở mục lý do | Văn bản in A4 giữ nguyên vẹn tính trang trọng và nền giấy trắng phẳng chuẩn hành chính |
+| 2026-11-24 | Dùng đơn vị point (pt) thay cho pixel (px) cho văn bản A4 (13.5pt - 14pt) | 14px chỉ tương đương 10.5pt khiến bản in A4 bị nhỏ; dùng 13.5pt - 14pt đúng chuẩn Nghị định 30/2020/NĐ-CP |
 
 ## Lỗi đã gặp
 | Vấn đề | Nguyên nhân | Cách sửa |
@@ -28,6 +35,7 @@
 | Thông báo lỗi đăng nhập để lộ mật khẩu mặc định hoặc phân biệt tài khoản tồn tại | authService trả về chi tiết mật khẩu mặc định 123456 hoặc thông báo không tìm thấy mã SV | Chuẩn hóa thông báo duy nhất "Tài khoản hoặc mật khẩu không chính xác." cho mọi trường hợp theo chuẩn bảo mật |
 | Sinh viên nộp đơn bị nhân đôi (x2 lá đơn cùng lúc) | `StudentConfirmationForm.jsx` gọi đồng thời cả `addStudentRequest` và `submitRequest` (bên trong cũng gọi tiếp `addMockRequest`) | Xóa lời gọi thừa trong form, thêm cờ khóa `isSubmitting` và cơ chế khử trùng lặp theo ID trong `mockRequestsStore.js` |
 | Danh sách Giảng viên và Phòng ban điều phối bị hard-code tĩnh | `AdminDashboardPage.jsx` dùng mảng tĩnh `LECTURERS` chứa tên các giảng viên mẫu cũ | Tạo hàm `listLecturersFromDatabase` trong `authService.js` lấy trực tiếp từ bảng `profiles` và chuẩn hóa 4 phòng ban |
+| Bản in văn bản A4 bị dính chữ 'Đăng nhập hệ thống', ngày giờ, localhost URL và số trang | Do thuộc tính lề mặc định của `@page` kích hoạt Header/Footer của trình duyệt và `index.html` chứa title 'Đăng nhập hệ thống' | Đặt `@page { margin: 0mm !important }`, căn lề hành chính bằng padding nội bộ và dùng `triggerPrintClean` tạm thời xóa rỗng document.title trước khi `window.print()` |
 
 ## Điều cần nhớ
 - (ghi dần)

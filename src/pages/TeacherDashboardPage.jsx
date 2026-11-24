@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo, useEffect, useRef } from 'react';
 import {
   Home,
   ClipboardList,
@@ -20,10 +20,13 @@ import {
   ShieldCheck,
   AlertTriangle,
   Eye,
+  Upload,
+  Sparkles,
 } from 'lucide-react';
 import { DEFAULT_LOGO_SRC } from './LoginPage';
 import SignatureManager from '../components/SignatureManager';
 import OfficialDocumentView from '../components/OfficialDocumentView';
+import { triggerPrintClean } from '../utils/printHelper';
 import {
   getStoredRequests,
   signAndApproveByTeacher,
@@ -31,6 +34,68 @@ import {
   markNotificationAsRead,
   markAllNotificationsAsRead,
 } from '../components/mockRequestsStore';
+
+/**
+ * Xử lý tách nền ảnh chữ ký của Giảng viên (tách nền trắng/xám xuất PNG trong suốt)
+ */
+function processSignatureImage(imgElement, threshold = 205, inkColorMode = 'blue') {
+  const canvas = document.createElement('canvas');
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return null;
+
+  const maxDimension = 900;
+  let width = imgElement.naturalWidth || imgElement.width;
+  let height = imgElement.naturalHeight || imgElement.height;
+
+  if (width > maxDimension || height > maxDimension) {
+    if (width > height) {
+      height = Math.round((height * maxDimension) / width);
+      width = maxDimension;
+    } else {
+      width = Math.round((width * maxDimension) / height);
+      height = maxDimension;
+    }
+  }
+
+  canvas.width = width;
+  canvas.height = height;
+  ctx.drawImage(imgElement, 0, 0, width, height);
+
+  const imgData = ctx.getImageData(0, 0, width, height);
+  const data = imgData.data;
+  const softEdge = 25;
+  const lowerThreshold = Math.max(0, threshold - softEdge);
+
+  for (let i = 0; i < data.length; i += 4) {
+    const r = data[i];
+    const g = data[i + 1];
+    const b = data[i + 2];
+    const brightness = 0.299 * r + 0.587 * g + 0.114 * b;
+
+    if (brightness >= threshold) {
+      data[i + 3] = 0;
+    } else {
+      let alpha = 255;
+      if (brightness > lowerThreshold) {
+        alpha = Math.round(((threshold - brightness) / softEdge) * 255);
+      }
+      data[i + 3] = alpha;
+
+      if (inkColorMode === 'blue') {
+        data[i] = 29;
+        data[i + 1] = 78;
+        data[i + 2] = 216;
+      } else if (inkColorMode === 'black') {
+        data[i] = 15;
+        data[i + 1] = 23;
+        data[i + 2] = 42;
+      }
+    }
+  }
+
+  ctx.putImageData(imgData, 0, 0);
+  return canvas.toDataURL('image/png');
+}
 
 /**
  * Tính toán danh sách 4 khóa học đang hoạt động:
@@ -94,7 +159,7 @@ const STATUS_FILTER_OPTIONS = [
   { value: 'all', label: 'Tất cả trạng thái' },
   { value: 'pending', label: 'Chờ tiếp nhận' },
   { value: 'in_progress', label: 'Đang xử lý' },
-  { value: 'teacher_approved', label: 'GV đã duyệt (Chờ Quản trị viên)' },
+  { value: 'teacher_approved', label: 'GV đã duyệt (Chờ Quản lý xác nhận)' },
   { value: 'completed', label: 'Đã hoàn thành' },
   { value: 'overdue', label: 'Quá hạn' },
 ];
@@ -172,7 +237,7 @@ function StatusPill({ status, label }) {
     return (
       <span className="inline-flex items-center gap-1.5 rounded-full bg-amber-50 px-2.5 py-1 text-xs font-semibold text-amber-700">
         <span className="h-1.5 w-1.5 rounded-full bg-amber-500 animate-pulse" />
-        <span>GV đã duyệt (Chờ Quản trị viên đóng dấu)</span>
+        <span>GV đã duyệt (Chờ Quản lý xác nhận)</span>
       </span>
     );
   }
@@ -220,6 +285,16 @@ function TeacherDashboardPage({ user, logoSrc = DEFAULT_LOGO_SRC, onLogout }) {
   const [viewDocRequest, setViewDocRequest] = useState(null);
   const [requestsList, setRequestsList] = useState(() => getStoredRequests());
   const [actionSuccessMsg, setActionSuccessMsg] = useState('');
+
+  // Quản lý chữ ký điện tử của Giảng viên khi duyệt đơn
+  const [teacherSignature, setTeacherSignature] = useState('');
+  const [signatureMethod, setSignatureMethod] = useState('draw'); // 'draw' | 'upload'
+  const [isDrawing, setIsDrawing] = useState(false);
+  const [hasDrawn, setHasDrawn] = useState(false);
+  const [drawColor, setDrawColor] = useState('#1D4ED8'); // Mặc định xanh dương (#1D4ED8)
+  const teacherCanvasRef = useRef(null);
+  const teacherFileInputRef = useRef(null);
+  const [showConfirmSignModal, setShowConfirmSignModal] = useState(false);
 
   // Quản lý thông báo phân công cho Giảng viên
   const teacherId = user?.teacherCode || 'GV001';
@@ -350,18 +425,131 @@ function TeacherDashboardPage({ user, logoSrc = DEFAULT_LOGO_SRC, onLogout }) {
     setSelectedStatus('all');
   };
 
-  // Thao tác ký duyệt đơn (GV ký duyệt xong chuyển Quản trị viên kiểm tra, đóng dấu)
-  const handleApproveRequest = (reqId) => {
-    const updated = signAndApproveByTeacher(reqId, {
-      name: teacherName,
-      id: user?.studentCode || user?.code || 'GV001',
-    });
+  // Mở modal duyệt đơn và làm mới trạng thái chữ ký
+  const handleOpenDetailModal = (req) => {
+    setSelectedRequest(req);
+    setTeacherSignature('');
+    setHasDrawn(false);
+    setSignatureMethod('draw');
+  };
+
+  const handleCloseDetailModal = () => {
+    setSelectedRequest(null);
+    setTeacherSignature('');
+    setHasDrawn(false);
+    setShowConfirmSignModal(false);
+  };
+
+  // Canvas vẽ tay trực tiếp của Giảng viên
+  const handlePointerDown = (e) => {
+    const canvas = teacherCanvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    canvas.setPointerCapture(e.pointerId);
+    const rect = canvas.getBoundingClientRect();
+    const x = ((e.clientX - rect.left) / rect.width) * canvas.width;
+    const y = ((e.clientY - rect.top) / rect.height) * canvas.height;
+
+    ctx.beginPath();
+    ctx.moveTo(x, y);
+    ctx.strokeStyle = drawColor;
+    ctx.lineWidth = 3;
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    setIsDrawing(true);
+    setHasDrawn(true);
+  };
+
+  const handlePointerMove = (e) => {
+    if (!isDrawing) return;
+    const canvas = teacherCanvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    const rect = canvas.getBoundingClientRect();
+    const x = ((e.clientX - rect.left) / rect.width) * canvas.width;
+    const y = ((e.clientY - rect.top) / rect.height) * canvas.height;
+
+    ctx.lineTo(x, y);
+    ctx.stroke();
+  };
+
+  const handlePointerUp = () => {
+    if (!isDrawing) return;
+    setIsDrawing(false);
+    const canvas = teacherCanvasRef.current;
+    if (canvas) {
+      setTeacherSignature(canvas.toDataURL('image/png'));
+    }
+  };
+
+  const handleClearDrawing = () => {
+    const canvas = teacherCanvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    setHasDrawn(false);
+    setTeacherSignature('');
+  };
+
+  const handleSignatureUpload = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const img = new Image();
+      img.onload = () => {
+        const transparentResult = processSignatureImage(img, 205, 'blue');
+        if (transparentResult) {
+          setTeacherSignature(transparentResult);
+          setHasDrawn(true);
+        }
+      };
+      img.src = event.target?.result;
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleLoadSavedSignature = () => {
+    const saved = localStorage.getItem('vmh_saved_signature');
+    if (saved) {
+      setTeacherSignature(saved);
+      setHasDrawn(true);
+    } else {
+      alert('Bạn chưa lưu chữ ký cá nhân trong tab "Chữ ký cá nhân". Vui lòng vẽ trực tiếp hoặc tải ảnh chữ ký vào khung.');
+    }
+  };
+
+  // Bước 1: Khi GV ấn nút xác nhận ký -> kiểm tra chữ ký & mở modal xác nhận 2 lần
+  const handleApproveRequest = () => {
+    if (!teacherSignature || !teacherSignature.trim()) {
+      alert('Vui lòng ký tên vào khung chữ ký trước khi ấn xác nhận phê duyệt đơn!');
+      return;
+    }
+    setShowConfirmSignModal(true);
+  };
+
+  // Bước 2: Khi GV xác nhận chắc chắn muốn ký (không thể tự ý ký lại sau bước này)
+  const handleExecuteApprove = (reqId) => {
+    const updated = signAndApproveByTeacher(
+      reqId,
+      {
+        name: teacherName,
+        id: user?.teacherCode || user?.studentCode || user?.code || 'GV001',
+      },
+      teacherSignature
+    );
     setRequestsList(updated);
     setActionSuccessMsg(
-      `Đã ký số phê duyệt đơn ${reqId}! Hồ sơ đã được chuyển tiếp đến Quản trị viên để đóng dấu và ban hành kết quả cho sinh viên.`
+      `Đã ký số phê duyệt đơn ${reqId}! Hồ sơ đã được chuyển tiếp đến Quản trị viên để kiểm tra và xác nhận hoàn tất.`
     );
     setTimeout(() => setActionSuccessMsg(''), 4500);
-    setSelectedRequest(null);
+    handleCloseDetailModal();
   };
 
   const handleSelectNav = (tabId) => {
@@ -853,7 +1041,7 @@ function TeacherDashboardPage({ user, logoSrc = DEFAULT_LOGO_SRC, onLogout }) {
                                 </button>
                                 <button
                                   type="button"
-                                  onClick={() => setSelectedRequest(req)}
+                                  onClick={() => handleOpenDetailModal(req)}
                                   className="cursor-pointer rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-semibold text-slate-700 transition-colors hover:border-[#2563EB] hover:bg-slate-50"
                                 >
                                   Chi tiết
@@ -920,10 +1108,16 @@ function TeacherDashboardPage({ user, logoSrc = DEFAULT_LOGO_SRC, onLogout }) {
                             </button>
                             <button
                               type="button"
-                              onClick={() => setSelectedRequest(req)}
-                              className="cursor-pointer rounded-lg bg-[#2563EB] px-3 py-1.5 text-xs font-semibold text-white hover:bg-[#1D4ED8]"
+                              onClick={() => handleOpenDetailModal(req)}
+                              className={`cursor-pointer rounded-lg px-3 py-1.5 text-xs font-semibold ${
+                                req.status === 'teacher_approved'
+                                  ? 'border border-amber-300 bg-amber-50 text-amber-700 hover:bg-amber-100'
+                                  : req.status === 'completed'
+                                  ? 'border border-slate-200 bg-slate-50 text-slate-600 hover:bg-slate-100'
+                                  : 'bg-[#2563EB] text-white hover:bg-[#1D4ED8]'
+                              }`}
                             >
-                              Duyệt đơn
+                              {req.status === 'teacher_approved' ? 'Đã duyệt' : req.status === 'completed' ? 'Xem đơn' : 'Duyệt đơn'}
                             </button>
                           </div>
                         </td>
@@ -992,18 +1186,18 @@ function TeacherDashboardPage({ user, logoSrc = DEFAULT_LOGO_SRC, onLogout }) {
 
       {/* MODAL XEM CHI TIẾT & KÝ DUYỆT ĐƠN CHO GIÁO VIÊN */}
       {selectedRequest && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4 backdrop-blur-[1px]">
-          <div className="w-full max-w-lg rounded-2xl bg-white p-6 shadow-2xl">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4 backdrop-blur-[1px] overflow-y-auto">
+          <div className="w-full max-w-xl rounded-2xl bg-white p-5 sm:p-6 shadow-2xl max-h-[92vh] overflow-y-auto my-auto">
             <div className="flex items-start justify-between gap-3 border-b border-slate-100 pb-3">
               <div>
                 <span className="text-xs font-bold text-[#2563EB]">{selectedRequest.id}</span>
-                <h3 className="mt-0.5 text-lg font-bold text-slate-800">
+                <h3 className="mt-0.5 text-base sm:text-lg font-bold text-slate-800">
                   {selectedRequest.typeName}
                 </h3>
               </div>
               <button
                 type="button"
-                onClick={() => setSelectedRequest(null)}
+                onClick={handleCloseDetailModal}
                 className="cursor-pointer rounded-lg p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-600"
                 aria-label="Đóng"
               >
@@ -1012,7 +1206,7 @@ function TeacherDashboardPage({ user, logoSrc = DEFAULT_LOGO_SRC, onLogout }) {
             </div>
 
             {/* Chi tiết sinh viên */}
-            <div className="mt-4 space-y-3 rounded-xl bg-slate-50 p-4 text-xs text-slate-700">
+            <div className="mt-4 space-y-2.5 rounded-xl bg-slate-50 p-3.5 text-xs text-slate-700">
               <div className="grid grid-cols-2 gap-2">
                 <div>
                   <span className="text-slate-400">Sinh viên:</span>
@@ -1047,6 +1241,222 @@ function TeacherDashboardPage({ user, logoSrc = DEFAULT_LOGO_SRC, onLogout }) {
               </div>
             </div>
 
+            {/* KHU VỰC KÝ CHỮ KÝ ĐIỆN TỬ CỦA GIẢNG VIÊN */}
+            {selectedRequest.status === 'teacher_approved' || selectedRequest.status === 'completed' || !!selectedRequest.teacherSignature ? (
+              <div className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50/70 p-3.5 space-y-2">
+                <div className="flex items-center gap-2 text-emerald-800 font-bold text-xs sm:text-sm">
+                  <CheckCircle2 className="h-4 w-4 text-emerald-600 shrink-0" />
+                  <span>Đơn đã được ký duyệt thành công</span>
+                </div>
+                <p className="text-xs text-slate-600">
+                  Hồ sơ đã được bạn ký duyệt điện tử và đang chờ Quản lý xác nhận hoàn tất.
+                </p>
+                {selectedRequest.teacherSignature && (
+                  <div className="flex items-center gap-2.5 pt-1">
+                    <span className="text-xs text-slate-500">Chữ ký đã lưu:</span>
+                    <div className="h-12 w-28 bg-white border border-emerald-200 rounded p-1 flex items-center justify-center">
+                      <img
+                        src={selectedRequest.teacherSignature}
+                        alt="Chữ ký GVCN"
+                        className="max-h-10 max-w-full object-contain"
+                      />
+                    </div>
+                  </div>
+                )}
+                <p className="text-[11px] text-amber-800 bg-amber-50 rounded-lg p-2 border border-amber-200/70 leading-relaxed">
+                  * <strong>Quy định bảo mật:</strong> Sau khi đã ký, bạn <strong>không thể tự ý ký lại</strong>. Nếu muốn ký lại thì phải liên hệ Quản trị viên để xóa chữ ký này, sau đó bạn mới có thể ký lại được.
+                </p>
+              </div>
+            ) : (
+              <div className="mt-4 rounded-xl border border-blue-200/80 bg-blue-50/40 p-3.5 space-y-3">
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 border-b border-blue-100 pb-2">
+                  <div className="flex items-center gap-1.5">
+                    <PenTool className="h-4 w-4 text-[#2563EB]" />
+                    <h4 className="text-xs sm:text-sm font-bold text-slate-800">
+                      Chữ ký của Giảng viên duyệt đơn <span className="text-red-500">*</span>
+                    </h4>
+                  </div>
+
+                  {/* Nút chọn phương thức ký */}
+                  <div className="flex items-center gap-1 bg-white p-0.5 rounded-lg border border-slate-200 text-xs">
+                    <button
+                      type="button"
+                      onClick={() => setSignatureMethod('draw')}
+                      className={`cursor-pointer rounded-md px-2.5 py-1 text-[11px] font-semibold transition-all ${
+                        signatureMethod === 'draw'
+                          ? 'bg-[#2563EB] text-white shadow-xs'
+                          : 'text-slate-600 hover:text-slate-900'
+                      }`}
+                    >
+                      Ký tay
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setSignatureMethod('upload')}
+                      className={`cursor-pointer rounded-md px-2.5 py-1 text-[11px] font-semibold transition-all ${
+                        signatureMethod === 'upload'
+                          ? 'bg-[#2563EB] text-white shadow-xs'
+                          : 'text-slate-600 hover:text-slate-900'
+                      }`}
+                    >
+                      Tải ảnh chữ ký
+                    </button>
+                  </div>
+                </div>
+
+                {/* Phương thức 1: Ký tay trực tiếp trên Canvas */}
+                {signatureMethod === 'draw' && (
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between text-[11px] text-slate-500">
+                      <span>Vẽ chữ ký trực tiếp bằng chuột hoặc màn hình cảm ứng:</span>
+                      <div className="flex items-center gap-2">
+                        <span className="text-[10px]">Mực:</span>
+                        <button
+                          type="button"
+                          onClick={() => setDrawColor('#1D4ED8')}
+                          className={`h-4 w-4 rounded-full bg-blue-700 ring-2 cursor-pointer ${
+                            drawColor === '#1D4ED8' ? 'ring-offset-1 ring-blue-500' : 'ring-transparent'
+                          }`}
+                          title="Mực xanh"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setDrawColor('#0F172A')}
+                          className={`h-4 w-4 rounded-full bg-slate-900 ring-2 cursor-pointer ${
+                            drawColor === '#0F172A' ? 'ring-offset-1 ring-slate-700' : 'ring-transparent'
+                          }`}
+                          title="Mực đen"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="relative overflow-hidden rounded-xl border border-slate-300 bg-white shadow-inner">
+                      <canvas
+                        ref={teacherCanvasRef}
+                        width={500}
+                        height={140}
+                        onPointerDown={handlePointerDown}
+                        onPointerMove={handlePointerMove}
+                        onPointerUp={handlePointerUp}
+                        className="h-32 w-full touch-none cursor-crosshair bg-white"
+                      />
+                      {!hasDrawn && !teacherSignature && (
+                        <div className="pointer-events-none absolute inset-0 flex items-center justify-center text-xs text-slate-400 italic">
+                          (Ký tên của Giảng viên tại đây)
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="flex items-center justify-between pt-1">
+                      <button
+                        type="button"
+                        onClick={handleClearDrawing}
+                        className="inline-flex cursor-pointer items-center gap-1 text-[11px] font-semibold text-slate-600 hover:text-red-600 transition-colors"
+                      >
+                        <RotateCcw className="h-3 w-3" />
+                        <span>Xóa vẽ lại</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={handleLoadSavedSignature}
+                        className="inline-flex cursor-pointer items-center gap-1 text-[11px] font-semibold text-[#2563EB] hover:underline"
+                        title="Dùng chữ ký đã lưu trong tab Chữ ký cá nhân"
+                      >
+                        <Sparkles className="h-3 w-3" />
+                        <span>Nạp chữ ký cá nhân đã lưu</span>
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {/* Phương thức 2: Tải ảnh chữ ký từ máy và tự động tách nền */}
+                {signatureMethod === 'upload' && (
+                  <div className="space-y-2">
+                    <input
+                      type="file"
+                      ref={teacherFileInputRef}
+                      accept="image/*"
+                      onChange={handleSignatureUpload}
+                      className="hidden"
+                    />
+                    <div
+                      onClick={() => teacherFileInputRef.current?.click()}
+                      className="flex cursor-pointer flex-col items-center justify-center rounded-xl border-2 border-dashed border-blue-300 bg-white/80 p-4 transition-colors hover:bg-blue-50/50"
+                    >
+                      <Upload className="h-6 w-6 text-[#2563EB]" />
+                      <p className="mt-1 text-xs font-semibold text-slate-700">
+                        Nhấn để tải ảnh chữ ký từ máy tính
+                      </p>
+                      <p className="text-[10px] text-slate-400">
+                        Hệ thống tự động tách nền giấy trắng/xám thành PNG trong suốt
+                      </p>
+                    </div>
+
+                    <div className="flex items-center justify-between pt-1">
+                      {teacherSignature ? (
+                        <span className="text-[11px] text-emerald-600 font-semibold flex items-center gap-1">
+                          <CheckCircle2 className="h-3.5 w-3.5" /> Đã nạp ảnh chữ ký thành công
+                        </span>
+                      ) : (
+                        <span className="text-[11px] text-slate-400">Chưa chọn ảnh chữ ký</span>
+                      )}
+
+                      <button
+                        type="button"
+                        onClick={handleLoadSavedSignature}
+                        className="inline-flex cursor-pointer items-center gap-1 text-[11px] font-semibold text-[#2563EB] hover:underline"
+                      >
+                        <Sparkles className="h-3 w-3" />
+                        <span>Nạp chữ ký cá nhân đã lưu</span>
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {/* Hiển thị xem trước chữ ký nếu đã có */}
+                {teacherSignature && (
+                  <div className="rounded-lg border border-slate-200 bg-white p-2.5 flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <div className="flex h-12 w-24 items-center justify-center rounded bg-slate-50 border border-slate-100 p-1">
+                        <img
+                          src={teacherSignature}
+                          alt="Chữ ký Giảng viên"
+                          className="max-h-10 max-w-full object-contain"
+                        />
+                      </div>
+                      <div className="text-[11px]">
+                        <p className="font-bold text-slate-800">Chữ ký đã sẵn sàng</p>
+                        <p className="text-slate-500 font-sans">{teacherName} (Giảng viên)</p>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setTeacherSignature('');
+                        setHasDrawn(false);
+                        if (teacherCanvasRef.current) {
+                          const ctx = teacherCanvasRef.current.getContext('2d');
+                          if (ctx) ctx.clearRect(0, 0, teacherCanvasRef.current.width, teacherCanvasRef.current.height);
+                        }
+                      }}
+                      className="cursor-pointer text-xs font-semibold text-red-500 hover:underline"
+                    >
+                      Hủy chữ ký
+                    </button>
+                  </div>
+                )}
+
+                {/* Cảnh báo nếu chưa có chữ ký */}
+                {!teacherSignature && (
+                  <p className="text-[11px] text-amber-700 bg-amber-50 rounded-lg p-2 border border-amber-200/70 flex items-center gap-1.5">
+                    <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
+                    <span>Bắt buộc phải có chữ ký mới có thể ấn xác nhận phê duyệt đơn.</span>
+                  </p>
+                )}
+              </div>
+            )}
+
             {/* Các hành động xử lý của Giáo viên */}
             <div className="mt-5 space-y-2">
               <button
@@ -1058,42 +1468,99 @@ function TeacherDashboardPage({ user, logoSrc = DEFAULT_LOGO_SRC, onLogout }) {
                 <span>Mở xem toàn văn bản đơn A4</span>
               </button>
 
-              <button
-                type="button"
-                onClick={() => handleApproveRequest(selectedRequest.id)}
-                className="flex w-full cursor-pointer items-center justify-center gap-2 rounded-xl bg-[#2563EB] py-3 text-xs font-bold text-white shadow-sm transition-all hover:bg-[#1D4ED8]"
-              >
-                <ShieldCheck className="h-4 w-4" />
-                <span>Ký duyệt đơn (Chữ ký điện tử GVCN)</span>
-              </button>
+              {/* Chỉ hiển thị nút ký duyệt nếu đơn chưa được ký */}
+              {selectedRequest.status !== 'teacher_approved' && selectedRequest.status !== 'completed' && !selectedRequest.teacherSignature && (
+                <>
+                  <button
+                    type="button"
+                    disabled={!teacherSignature}
+                    onClick={handleApproveRequest}
+                    className={`flex w-full items-center justify-center gap-2 rounded-xl py-3 text-xs font-bold transition-all shadow-sm ${
+                      teacherSignature
+                        ? 'cursor-pointer bg-[#2563EB] text-white hover:bg-[#1D4ED8]'
+                        : 'cursor-not-allowed bg-slate-200 text-slate-400 shadow-none'
+                    }`}
+                  >
+                    <ShieldCheck className="h-4 w-4" />
+                    <span>
+                      {teacherSignature
+                        ? 'Xác nhận ký duyệt đơn (Chữ ký điện tử GVCN)'
+                        : 'Vui lòng ký tên trước khi xác nhận'}
+                    </span>
+                  </button>
 
-              <div className="grid grid-cols-2 gap-2 pt-1">
-                <button
-                  type="button"
-                  onClick={() => {
-                    alert(`Đã gửi thông báo yêu cầu bổ sung thông tin tới sinh viên ${selectedRequest.studentName}.`);
-                    setSelectedRequest(null);
-                  }}
-                  className="cursor-pointer rounded-xl border border-amber-200 bg-amber-50/60 py-2 text-xs font-semibold text-amber-700 hover:bg-amber-100"
-                >
-                  <AlertTriangle className="mr-1 inline-block h-3.5 w-3.5" />
-                  Yêu cầu bổ sung
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    alert(`Đã từ chối đơn ${selectedRequest.id}.`);
-                    setSelectedRequest(null);
-                  }}
-                  className="cursor-pointer rounded-xl border border-red-200 bg-red-50/60 py-2 text-xs font-semibold text-red-600 hover:bg-red-100"
-                >
-                  Từ chối đơn
-                </button>
-              </div>
+                  <div className="grid grid-cols-2 gap-2 pt-1">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        alert(`Đã gửi thông báo yêu cầu bổ sung thông tin tới sinh viên ${selectedRequest.studentName}.`);
+                        handleCloseDetailModal();
+                      }}
+                      className="cursor-pointer rounded-xl border border-amber-200 bg-amber-50/60 py-2 text-xs font-semibold text-amber-700 hover:bg-amber-100"
+                    >
+                      <AlertTriangle className="mr-1 inline-block h-3.5 w-3.5" />
+                      Yêu cầu bổ sung
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        alert(`Đã từ chối đơn ${selectedRequest.id}.`);
+                        handleCloseDetailModal();
+                      }}
+                      className="cursor-pointer rounded-xl border border-red-200 bg-red-50/60 py-2 text-xs font-semibold text-red-600 hover:bg-red-100"
+                    >
+                      Từ chối đơn
+                    </button>
+                  </div>
+                </>
+              )}
             </div>
           </div>
         </div>
       )}
+
+      {/* MODAL XÁC NHẬN 2 LẦN TRƯỚC KHI KÝ DUYỆT */}
+      {showConfirmSignModal && selectedRequest && (
+        <div className="fixed inset-0 z-60 flex items-center justify-center bg-slate-900/50 p-4 backdrop-blur-[2px]">
+          <div className="w-full max-w-md rounded-2xl bg-white p-5 sm:p-6 shadow-2xl space-y-4">
+            <div className="flex items-center gap-2.5 text-amber-600 border-b border-slate-100 pb-3">
+              <AlertTriangle className="h-5 w-5 shrink-0" />
+              <h3 className="font-bold text-base text-slate-800">Xác nhận ký duyệt hồ sơ</h3>
+            </div>
+            <div className="text-xs text-slate-600 space-y-2.5">
+              <p>
+                Bạn đang chuẩn bị ký phê duyệt đơn: <strong className="text-slate-800">{selectedRequest.typeName}</strong> (Mã đơn: <strong className="text-[#2563EB]">{selectedRequest.id}</strong>) của sinh viên <strong className="text-slate-800">{selectedRequest.studentName}</strong>.
+              </p>
+              <div className="p-3 bg-amber-50 rounded-xl border border-amber-200 text-amber-800 text-[11px] leading-relaxed">
+                <strong>Lưu ý quan trọng:</strong> Sau khi bạn xác nhận, bạn sẽ <strong>KHÔNG THỂ tự ý ký lại</strong> hay sửa đổi chữ ký. Nếu muốn ký lại thì phải liên hệ Quản trị viên để xóa chữ ký này, khi đó bạn mới có thể ký lại được.
+              </div>
+              <div>
+                <p className="text-[11px] text-slate-400 mb-1">Chữ ký sẽ áp dụng vào hồ sơ:</p>
+                <div className="flex items-center justify-center p-2 bg-slate-50 rounded-lg border border-slate-200">
+                  <img src={teacherSignature} alt="Chữ ký của bạn" className="max-h-12 max-w-[160px] object-contain" />
+                </div>
+              </div>
+            </div>
+            <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100">
+              <button
+                type="button"
+                onClick={() => setShowConfirmSignModal(false)}
+                className="px-4 py-2 text-xs font-medium text-slate-600 rounded-xl border border-slate-200 hover:bg-slate-50 cursor-pointer"
+              >
+                Hủy / Kiểm tra lại
+              </button>
+              <button
+                type="button"
+                onClick={() => handleExecuteApprove(selectedRequest.id)}
+                className="px-5 py-2 text-xs font-bold text-white bg-[#2563EB] rounded-xl hover:bg-[#1D4ED8] shadow-sm cursor-pointer"
+              >
+                Tôi chắc chắn, Xác nhận ký
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* MODAL XEM TOÀN VĂN ĐƠN A4 CHO GIÁO VIÊN */}
       {viewDocRequest && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 p-4 backdrop-blur-[2px] overflow-y-auto">
@@ -1108,7 +1575,7 @@ function TeacherDashboardPage({ user, logoSrc = DEFAULT_LOGO_SRC, onLogout }) {
               <div className="flex items-center gap-2">
                 <button
                   type="button"
-                  onClick={() => window.print()}
+                  onClick={() => triggerPrintClean()}
                   className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-100"
                 >
                   In / Lưu PDF

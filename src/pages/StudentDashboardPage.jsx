@@ -21,6 +21,7 @@ import {
 import { DEFAULT_LOGO_SRC } from './LoginPage';
 import RequestTypePicker from '../components/RequestTypePicker';
 import OfficialDocumentView from '../components/OfficialDocumentView';
+import { triggerPrintClean } from '../utils/printHelper';
 import { getStudentProfile, formatCccd } from '../services/cmsService';
 import { cancelAndRemoveRequest } from '../services/requestService';
 import {
@@ -46,7 +47,7 @@ function WorkflowTimeline({ status }) {
   let currentStep = 1;
   if (status === 'pending') currentStep = 2; // Đang chờ phân luồng
   else if (status === 'in_progress') currentStep = 3; // Đang xử lý tại GV
-  else if (status === 'teacher_approved') currentStep = 4; // Chờ Một Cửa đóng dấu
+  else if (status === 'teacher_approved') currentStep = 4; // Chờ Quản trị viên xác nhận
   else if (status === 'completed') currentStep = 5; // Hoàn tất 4/4
   else if (status === 'rejected') currentStep = -1;
 
@@ -54,7 +55,7 @@ function WorkflowTimeline({ status }) {
     { num: 1, label: 'Nộp đơn', sub: 'Sinh viên' },
     { num: 2, label: 'Tiếp nhận', sub: 'Một Cửa' },
     { num: 3, label: 'Ký duyệt', sub: 'GVCN' },
-    { num: 4, label: 'Đóng dấu', sub: 'Một Cửa' },
+    { num: 4, label: 'Xác nhận', sub: 'Quản trị' },
   ];
 
   return (
@@ -131,7 +132,7 @@ const STATUS_BADGE_MAP = {
   teacher_approved: {
     pillClass: 'bg-indigo-50 text-indigo-700',
     dotClass: 'bg-indigo-500 animate-pulse',
-    defaultLabel: 'GV đã duyệt (Chờ Quản trị viên đóng dấu)',
+    defaultLabel: 'GV đã duyệt (Chờ Quản lý xác nhận)',
   },
   completed: {
     pillClass: 'bg-emerald-50 text-emerald-700',
@@ -844,7 +845,7 @@ function StudentDashboardPage({ user, logoSrc = DEFAULT_LOGO_SRC, onLogout }) {
                 <div className="rounded-xl border border-emerald-200 bg-emerald-50/80 p-3.5 text-xs text-emerald-900 space-y-1.5">
                   <p className="font-bold flex items-center gap-1.5 text-emerald-800 text-sm">
                     <CheckCircle2 className="h-4 w-4 text-emerald-600 shrink-0" />
-                    Hồ sơ đã được phê duyệt & đóng dấu ban hành!
+                    Hồ sơ đã được phê duyệt & hoàn tất thành công!
                   </p>
                   <p className="text-slate-700">
                     Địa điểm nhận kết quả bản cứng: <strong className="text-emerald-800">{selectedRequest.pickupLocation || 'Phòng 102 - Tòa nhà A (Phòng Đào tạo)'}</strong>
@@ -857,7 +858,7 @@ function StudentDashboardPage({ user, logoSrc = DEFAULT_LOGO_SRC, onLogout }) {
                 </div>
               )}
 
-              {/* Thông báo nếu GV đã duyệt nhưng Quản trị viên đang thụ lý đóng dấu */}
+              {/* Thông báo nếu GV đã duyệt nhưng Quản trị viên đang thụ lý */}
               {selectedRequest.status === 'teacher_approved' && (
                 <div className="rounded-xl border border-indigo-200 bg-indigo-50/70 p-3.5 text-xs text-indigo-900 space-y-1">
                   <p className="font-bold flex items-center gap-1.5 text-indigo-800">
@@ -865,7 +866,7 @@ function StudentDashboardPage({ user, logoSrc = DEFAULT_LOGO_SRC, onLogout }) {
                     Giáo viên chủ nhiệm đã duyệt & ký số
                   </p>
                   <p className="text-slate-600">
-                    Hồ sơ đã được chuyển tự động về Quản trị viên để đối chiếu và đóng dấu số. Hệ thống sẽ gửi thông báo đến bạn ngay khi Quản trị viên ban hành.
+                    Hồ sơ đã được chuyển tự động về Quản trị viên để kiểm tra và xác nhận hoàn tất. Hệ thống sẽ gửi thông báo đến bạn ngay khi Quản trị viên hoàn tất xử lý.
                   </p>
                 </div>
               )}
@@ -948,7 +949,7 @@ function StudentDashboardPage({ user, logoSrc = DEFAULT_LOGO_SRC, onLogout }) {
               <div className="flex items-center gap-2">
                 <button
                   type="button"
-                  onClick={() => window.print()}
+                  onClick={() => triggerPrintClean()}
                   className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-100"
                 >
                   In / Lưu PDF

@@ -36,6 +36,7 @@ import {
 import { DEFAULT_LOGO_SRC } from './LoginPage';
 import OfficialDocumentView from '../components/OfficialDocumentView';
 import { parseDocxFile } from '../utils/docxParser';
+import { triggerPrintClean } from '../utils/printHelper';
 import {
   createRequestTypeOnSupabase,
   deleteRequestTypeOnSupabase,
@@ -49,6 +50,7 @@ import {
   getStoredRequestTypes,
   saveStoredRequestTypes,
   finalizeAndNotifyStudentByAdmin,
+  resetTeacherSignatureByAdmin,
   getStoredNotifications,
   markNotificationAsRead,
   markAllNotificationsAsRead,
@@ -122,7 +124,7 @@ const STATUS_FILTER_OPTIONS = [
   { value: 'all', label: 'Tất cả trạng thái' },
   { value: 'pending', label: 'Chưa hoàn thành (Chờ tiếp nhận)' },
   { value: 'in_progress', label: 'Đang xử lý (Đã phân luồng)' },
-  { value: 'teacher_approved', label: 'GV đã duyệt (Chờ Quản trị viên đóng dấu)' },
+  { value: 'teacher_approved', label: 'GV đã duyệt (Chờ Quản lý xác nhận)' },
   { value: 'completed', label: 'Đã hoàn thành' },
   { value: 'overdue', label: 'Quá hạn' },
 ];
@@ -199,7 +201,7 @@ function StatusPill({ status, label }) {
     return (
       <span className="inline-flex items-center gap-1.5 rounded-full bg-indigo-50 px-2.5 py-1 text-xs font-semibold text-indigo-700 ring-1 ring-indigo-200">
         <span className="h-1.5 w-1.5 rounded-full bg-indigo-500 animate-pulse" />
-        <span>{label || 'GV đã duyệt (Chờ đóng dấu)'}</span>
+        <span>{label || 'GV đã duyệt (Chờ Quản lý xác nhận)'}</span>
       </span>
     );
   }
@@ -250,7 +252,7 @@ function WorkflowTimeline({ status }) {
     { num: 1, label: 'Nộp đơn', sub: 'Sinh viên' },
     { num: 2, label: 'Tiếp nhận', sub: 'Một Cửa' },
     { num: 3, label: 'Ký duyệt', sub: 'GVCN' },
-    { num: 4, label: 'Đóng dấu', sub: 'Một Cửa' },
+    { num: 4, label: 'Xác nhận', sub: 'Quản trị' },
   ];
 
   return (
@@ -436,11 +438,11 @@ export default function AdminDashboardPage({ user, logoSrc = DEFAULT_LOGO_SRC, o
   const [isRejectModalOpen, setIsRejectModalOpen] = useState(false);
   const [rejectReason, setRejectReason] = useState('');
 
-  // Modal đóng dấu & thông báo cho sinh viên (Quản trị viên thụ lý sau khi GV ký)
+  // Modal xác nhận hoàn tất & thông báo cho sinh viên (Quản trị viên thụ lý sau khi GV ký)
   const [isFinalizeModalOpen, setIsFinalizeModalOpen] = useState(false);
   const [pickupLocation, setPickupLocation] = useState('Phòng 102 - Tòa nhà A (Phòng Đào tạo)');
   const [adminFinalizeNote, setAdminFinalizeNote] = useState(
-    'Đã đối chiếu xác nhận chữ ký của GVCN, đóng dấu số và hoàn tất xử lý. Sinh viên có thể đến nhận bản cứng hoặc tải bản số hóa.'
+    'Đã đối chiếu xác nhận chữ ký của GVCN và hoàn tất xử lý. Sinh viên có thể tra cứu kết quả hoặc đến nhận bản cứng.'
   );
 
   // Tên cán bộ quản lý
@@ -876,17 +878,31 @@ export default function AdminDashboardPage({ user, logoSrc = DEFAULT_LOGO_SRC, o
     setTimeout(() => setActionSuccessMsg(''), 4500);
   };
 
-  // Mở modal đóng dấu & ban hành kết quả cho sinh viên (khi GV đã duyệt xong)
+  // Quản trị viên xóa chữ ký của Giảng viên để mở lại quyền cho GV ký lại
+  const handleResetTeacherSignature = (req) => {
+    if (!req) return;
+    const confirmMsg = `Bạn có chắc chắn muốn xóa chữ ký GV của đơn ${req.id} (SV ${req.studentName}) để mở lại quyền cho Giảng viên ký lại không?`;
+    if (window.confirm(confirmMsg)) {
+      const updated = resetTeacherSignatureByAdmin(req.id, user?.fullName || 'Quản trị viên');
+      setRequestsList(updated);
+      const updatedTarget = updated.find((r) => r.id === req.id);
+      setSelectedRequest(updatedTarget || null);
+      setActionSuccessMsg(`Đã xóa chữ ký GV của đơn ${req.id}. Đơn đã được chuyển về trạng thái chờ Giảng viên ký lại.`);
+      setTimeout(() => setActionSuccessMsg(''), 4500);
+    }
+  };
+
+  // Mở modal xác nhận hoàn tất đơn cho sinh viên (khi GV đã duyệt xong)
   const handleOpenFinalize = (req) => {
     setSelectedRequest(req);
     setPickupLocation('Phòng 102 - Tòa nhà A (Phòng Đào tạo)');
     setAdminFinalizeNote(
-      'Đã đối chiếu xác nhận chữ ký của GVCN, đóng dấu số và hoàn tất xử lý. Sinh viên có thể đến nhận bản cứng hoặc tải bản số hóa.'
+      'Hồ sơ đã được Quản trị viên kiểm tra, xác nhận hoàn tất thành công. Sinh viên có thể đến nhận kết quả hoặc tra cứu trực tuyến.'
     );
     setIsFinalizeModalOpen(true);
   };
 
-  // Xác nhận đóng dấu và ban hành thông báo đến sinh viên qua web
+  // Xác nhận đơn đã hoàn thành và gửi thông báo đến sinh viên qua web
   const handleConfirmFinalize = (e) => {
     e.preventDefault();
     if (!selectedRequest) return;
@@ -906,7 +922,7 @@ export default function AdminDashboardPage({ user, logoSrc = DEFAULT_LOGO_SRC, o
     const updatedTarget = updated.find((r) => r.id === selectedRequest.id);
     setSelectedRequest(updatedTarget || null);
     setActionSuccessMsg(
-      `Đã đóng dấu phê duyệt và gửi thông báo hoàn tất đơn ${selectedRequest.id} tới sinh viên!`
+      `Đã xác nhận hoàn thành đơn ${selectedRequest.id} thành công!`
     );
     setTimeout(() => setActionSuccessMsg(''), 4500);
   };
@@ -1234,7 +1250,7 @@ export default function AdminDashboardPage({ user, logoSrc = DEFAULT_LOGO_SRC, o
                 </button>
               </section>
 
-              {/* Cảnh báo khi có đơn GV đã duyệt xong chờ Quản trị viên đóng dấu & trả kết quả */}
+              {/* Cảnh báo khi có đơn GV đã duyệt xong chờ Quản trị viên xác nhận hoàn tất */}
               {stats.teacherApprovedCount > 0 && (
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 rounded-2xl border border-indigo-200 bg-indigo-50/90 p-4 sm:p-5 shadow-xs">
                   <div className="flex items-center gap-3">
@@ -1246,7 +1262,7 @@ export default function AdminDashboardPage({ user, logoSrc = DEFAULT_LOGO_SRC, o
                         Có {stats.teacherApprovedCount} đơn Giảng viên đã duyệt & ký số thành công!
                       </h4>
                       <p className="text-xs text-indigo-700">
-                        Hồ sơ đang chờ Quản trị viên kiểm tra, đóng dấu và gửi thông báo hoàn tất đến sinh viên qua web.
+                        Hồ sơ đang chờ Quản trị viên kiểm tra và gửi thông báo hoàn tất đến sinh viên qua web.
                       </p>
                     </div>
                   </div>
@@ -1258,7 +1274,7 @@ export default function AdminDashboardPage({ user, logoSrc = DEFAULT_LOGO_SRC, o
                     }}
                     className="cursor-pointer shrink-0 rounded-xl bg-indigo-600 px-4 py-2 text-xs font-semibold text-white transition-colors hover:bg-indigo-700 shadow-xs"
                   >
-                    Xem & Đóng dấu ngay
+                    Xem & Xác nhận ngay
                   </button>
                 </div>
               )}
@@ -1444,7 +1460,7 @@ export default function AdminDashboardPage({ user, logoSrc = DEFAULT_LOGO_SRC, o
                                     className="flex cursor-pointer items-center gap-1 rounded-lg bg-emerald-600 px-2.5 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-emerald-700 shadow-xs"
                                   >
                                     <CheckCircle2 className="h-3.5 w-3.5" />
-                                    <span>Đóng dấu & Báo SV</span>
+                                    <span>Xác nhận & Báo SV</span>
                                   </button>
                                 )}
                               </div>
@@ -1462,18 +1478,18 @@ export default function AdminDashboardPage({ user, logoSrc = DEFAULT_LOGO_SRC, o
           {/* TAB 2: ĐƠN CẦN XỬ LÝ */}
           {activeTab === 'pending-dispatch' && (
             <div className="space-y-6">
-              {/* PHẦN 1: ĐƠN GV ĐÃ DUYỆT - CHỜ QUẢN TRỊ VIÊN ĐÓNG DẤU & THÔNG BÁO SV */}
+              {/* PHẦN 1: ĐƠN GV ĐÃ DUYỆT - CHỜ QUẢN TRỊ VIÊN XÁC NHẬN HOÀN TẤT */}
               <section className="rounded-2xl border border-indigo-200 bg-white p-5 shadow-xs sm:p-6 ring-2 ring-indigo-100">
                 <div className="mb-5 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                   <div>
                     <div className="flex items-center gap-2">
                       <Sparkles className="h-5 w-5 text-indigo-600" />
                       <h1 className="text-xl font-bold text-slate-800">
-                        Đơn GV đã duyệt — Chờ Quản trị viên đóng dấu & Trả kết quả ({stats.teacherApprovedCount})
+                        Đơn GV đã duyệt — Chờ Quản trị viên xác nhận hoàn tất ({stats.teacherApprovedCount})
                       </h1>
                     </div>
                     <p className="text-sm text-slate-500 mt-1">
-                      Giáo viên chủ nhiệm đã ký số điện tử. Cán bộ Quản trị viên đối chiếu, đóng dấu và gửi thông báo hoàn thành đến sinh viên qua web.
+                      Giáo viên chủ nhiệm đã ký số điện tử. Cán bộ Quản trị viên kiểm tra và gửi thông báo hoàn thành đến sinh viên qua web.
                     </p>
                   </div>
                 </div>
@@ -1493,7 +1509,7 @@ export default function AdminDashboardPage({ user, logoSrc = DEFAULT_LOGO_SRC, o
                       {requestsList.filter((r) => r.status === 'teacher_approved').length === 0 ? (
                         <tr>
                           <td colSpan={5} className="py-6 text-center text-xs text-slate-400">
-                            Hiện không có đơn nào đang chờ Quản trị viên đóng dấu.
+                            Hiện không có đơn nào đang chờ Quản trị viên xác nhận.
                           </td>
                         </tr>
                       ) : (
@@ -1536,7 +1552,7 @@ export default function AdminDashboardPage({ user, logoSrc = DEFAULT_LOGO_SRC, o
                                     className="flex cursor-pointer items-center gap-1 rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white transition-colors hover:bg-emerald-700 shadow-xs"
                                   >
                                     <CheckCircle2 className="h-3.5 w-3.5" />
-                                    <span>Đóng dấu & Báo SV</span>
+                                    <span>Xác nhận hoàn tất</span>
                                   </button>
                                 </div>
                               </td>
@@ -2662,18 +2678,18 @@ export default function AdminDashboardPage({ user, logoSrc = DEFAULT_LOGO_SRC, o
                         {selectedRequest.teacherApprovedBy || selectedRequest.assignedTo?.name || 'Giảng viên chủ nhiệm'}
                       </p>
                       <p className="text-slate-500">Đã kiểm duyệt thông tin & đồng ý đề xuất của sinh viên.</p>
-                      <p className="font-semibold text-indigo-700">Chờ Quản trị viên đối chiếu, đóng dấu và thông báo sinh viên.</p>
+                      <p className="font-semibold text-indigo-700">Chờ Quản trị viên đối chiếu và xác nhận hoàn tất.</p>
                     </div>
                   </div>
                 </div>
               )}
 
-              {/* Thông tin đóng dấu Quản trị viên nếu đã hoàn thành */}
+              {/* Thông tin Quản trị viên nếu đã hoàn thành */}
               {selectedRequest.status === 'completed' && (
                 <div className="rounded-xl border border-emerald-200 bg-emerald-50/70 p-4 space-y-1.5 text-xs text-emerald-900">
                   <p className="font-bold text-sm flex items-center gap-1.5 text-emerald-800">
                     <CheckCircle2 className="h-4 w-4 text-emerald-600" />
-                    Đã hoàn tất đóng dấu & Ban hành
+                    Đã hoàn tất xác nhận & Ban hành
                   </p>
                   <p>Địa điểm nhận: <strong>{selectedRequest.pickupLocation || 'Phòng 102 - Tòa nhà A'}</strong></p>
                   {selectedRequest.adminNote && <p className="italic text-slate-600">Ghi chú: "{selectedRequest.adminNote}"</p>}
@@ -2753,33 +2769,44 @@ export default function AdminDashboardPage({ user, logoSrc = DEFAULT_LOGO_SRC, o
               )}
 
               {selectedRequest.status === 'teacher_approved' && (
-                <button
-                  type="button"
-                  onClick={() => handleOpenFinalize(selectedRequest)}
-                  className="flex items-center gap-1.5 rounded-xl bg-emerald-600 px-4 py-2 text-xs font-semibold text-white hover:bg-emerald-700 shadow-sm"
-                >
-                  <CheckCircle2 className="h-4 w-4" />
-                  <span>Đóng dấu & Thông báo cho SV</span>
-                </button>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => handleResetTeacherSignature(selectedRequest)}
+                    className="flex items-center gap-1.5 rounded-xl border border-red-200 bg-red-50 px-3.5 py-2 text-xs font-semibold text-red-600 hover:bg-red-100 cursor-pointer transition-colors"
+                    title="Xóa chữ ký hiện tại để cho phép Giảng viên ký lại"
+                  >
+                    <RotateCcw className="h-4 w-4" />
+                    <span>Xóa chữ ký GV (Cho ký lại)</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleOpenFinalize(selectedRequest)}
+                    className="flex items-center gap-1.5 rounded-xl bg-emerald-600 px-4 py-2 text-xs font-semibold text-white hover:bg-emerald-700 shadow-sm cursor-pointer transition-colors"
+                  >
+                    <CheckCircle2 className="h-4 w-4" />
+                    <span>Xác nhận hoàn thành đơn</span>
+                  </button>
+                </div>
               )}
             </div>
           </div>
         </div>
       )}
 
-      {/* MODAL ĐÓNG DẤU & BAN HÀNH CHO SINH VIÊN */}
+      {/* MODAL XÁC NHẬN HOÀN THÀNH ĐƠN */}
       {isFinalizeModalOpen && selectedRequest && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4 backdrop-blur-[2px]">
           <div className="w-full max-w-lg rounded-2xl bg-white shadow-2xl overflow-hidden">
             <div className="border-b border-emerald-100 bg-emerald-50 px-6 py-4 flex items-center justify-between text-emerald-950">
               <div className="flex items-center gap-2">
                 <CheckCircle2 className="h-5 w-5 text-emerald-600" />
-                <h3 className="font-bold text-base">Đóng dấu số & Ban hành cho Sinh viên</h3>
+                <h3 className="font-bold text-base">Xác nhận hoàn thành đơn</h3>
               </div>
               <button
                 type="button"
                 onClick={() => setIsFinalizeModalOpen(false)}
-                className="rounded-lg p-1 text-slate-400 hover:bg-emerald-100 hover:text-emerald-700"
+                className="rounded-lg p-1 text-slate-400 hover:bg-emerald-100 hover:text-emerald-700 cursor-pointer"
               >
                 <X className="h-5 w-5" />
               </button>
@@ -2793,18 +2820,17 @@ export default function AdminDashboardPage({ user, logoSrc = DEFAULT_LOGO_SRC, o
                 <p>
                   Sinh viên: <strong className="text-slate-800">{selectedRequest.studentName}</strong> ({selectedRequest.studentCode}) - Lớp {selectedRequest.className}
                 </p>
-                <p className="text-indigo-700 font-medium">
+                <p className="text-emerald-700 font-medium">
                   ✓ Giảng viên chủ nhiệm đã duyệt & ký số điện tử.
                 </p>
               </div>
 
               <div>
                 <label className="block text-xs font-semibold text-slate-700 mb-1.5">
-                  Địa điểm nhận kết quả bản cứng (Gửi kèm thông báo đến SV):
+                  Địa điểm nhận kết quả bản cứng (Gửi kèm thông báo đến SV nếu có):
                 </label>
                 <input
                   type="text"
-                  required
                   value={pickupLocation}
                   onChange={(e) => setPickupLocation(e.target.value)}
                   placeholder="Ví dụ: Phòng 102 - Tòa nhà A (Phòng Đào tạo)"
@@ -2814,13 +2840,13 @@ export default function AdminDashboardPage({ user, logoSrc = DEFAULT_LOGO_SRC, o
 
               <div>
                 <label className="block text-xs font-semibold text-slate-700 mb-1.5">
-                  Ghi chú hướng dẫn cho sinh viên:
+                  Ghi chú hoàn thành gửi sinh viên:
                 </label>
                 <textarea
                   rows={3}
                   value={adminFinalizeNote}
                   onChange={(e) => setAdminFinalizeNote(e.target.value)}
-                  placeholder="Nhập ghi chú hoặc nhắc nhở khi sinh viên đến nhận..."
+                  placeholder="Nhập ghi chú hoặc nhắc nhở khi sinh viên tra cứu..."
                   className="w-full rounded-xl border border-slate-300 p-3 text-xs text-slate-800 focus:border-[#2563EB] focus:outline-none"
                 />
               </div>
@@ -2829,16 +2855,16 @@ export default function AdminDashboardPage({ user, logoSrc = DEFAULT_LOGO_SRC, o
                 <button
                   type="button"
                   onClick={() => setIsFinalizeModalOpen(false)}
-                  className="rounded-xl border border-slate-200 px-4 py-2 text-xs font-medium text-slate-600 hover:bg-slate-50"
+                  className="rounded-xl border border-slate-200 px-4 py-2 text-xs font-medium text-slate-600 hover:bg-slate-50 cursor-pointer"
                 >
                   Hủy
                 </button>
                 <button
                   type="submit"
-                  className="flex items-center gap-1.5 rounded-xl bg-emerald-600 px-5 py-2 text-xs font-semibold text-white hover:bg-emerald-700 shadow-sm"
+                  className="flex items-center gap-1.5 rounded-xl bg-emerald-600 px-5 py-2 text-xs font-semibold text-white hover:bg-emerald-700 shadow-sm cursor-pointer"
                 >
                   <CheckCircle2 className="h-4 w-4" />
-                  <span>Xác nhận Đóng dấu & Ban hành</span>
+                  <span>Xác nhận đơn đã hoàn thành</span>
                 </button>
               </div>
             </form>
@@ -2916,7 +2942,7 @@ export default function AdminDashboardPage({ user, logoSrc = DEFAULT_LOGO_SRC, o
               <div className="flex items-center gap-2">
                 <button
                   type="button"
-                  onClick={() => window.print()}
+                  onClick={() => triggerPrintClean()}
                   className="rounded-lg border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-100"
                 >
                   In / Lưu PDF

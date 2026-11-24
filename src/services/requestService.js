@@ -232,8 +232,8 @@ export async function finalizeAndNotifyStudentRequest(requestId, adminName, pick
     await supabase.from('request_step_logs').insert([
       {
         request_id: requestId,
-        hanh_dong: 'Đóng dấu & Ban hành (Quản trị viên)',
-        ghi_chu: adminNote || `Cán bộ Quản trị viên (${adminName}) đã đóng dấu và hoàn tất đơn cho sinh viên.`,
+        hanh_dong: 'Xác nhận hoàn tất (Quản trị viên)',
+        ghi_chu: adminNote || `Cán bộ Quản trị viên (${adminName}) đã xác nhận hoàn tất đơn cho sinh viên.`,
       },
     ]);
   } catch (err) {

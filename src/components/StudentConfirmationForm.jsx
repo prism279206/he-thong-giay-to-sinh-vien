@@ -17,6 +17,7 @@ import {
 import logoCdvm from '../assets/images/logocđvm.jpg';
 import { submitRequest } from '../services/requestService';
 import { getStudentProfile, formatCccd } from '../services/cmsService';
+import { triggerPrintClean } from '../utils/printHelper';
 
 function formatDob(dateStr) {
   if (!dateStr) return '';
@@ -200,7 +201,7 @@ function StudentConfirmationForm({ onBack, user, requestType }) {
   };
 
   const handlePrint = () => {
-    window.print();
+    triggerPrintClean();
   };
 
   // Canvas vẽ tay trực tiếp trong form
@@ -956,13 +957,14 @@ function StudentConfirmationForm({ onBack, user, requestType }) {
             <span>Tự động cập nhật theo nội dung bên trái</span>
           </div>
 
-          {/* Tờ giấy A4 mô phỏng - Toàn bộ dùng font Times New Roman */}
+          {/* Tờ giấy A4 mô phỏng - Toàn bộ dùng font Times New Roman chuẩn 13.5pt - 14pt */}
           <div
             id="a4-printable-document"
             className="rounded-2xl border border-slate-300/80 bg-white p-6 shadow-md transition-all sm:p-10 text-black leading-relaxed select-text"
             style={{
               fontFamily: '"Times New Roman", Times, "Liberation Serif", serif',
-              fontSize: '14px',
+              fontSize: '13.5pt',
+              lineHeight: 1.45,
               minHeight: '850px',
             }}
           >
@@ -978,28 +980,28 @@ function StudentConfirmationForm({ onBack, user, requestType }) {
                   />
                 </div>
 
-                {/* Quốc hiệu góc phải - Chuẩn Times New Roman */}
+                {/* Quốc hiệu góc phải - Chuẩn Times New Roman 12.5pt - 13.5pt */}
                 <div className="text-center" style={{ fontFamily: '"Times New Roman", Times, serif' }}>
-                  <p className="text-[13px] font-bold tracking-tight uppercase sm:text-[14px]">
+                  <p className="text-[12.5pt] font-bold tracking-tight uppercase">
                     CỘNG HÒA XÃ HỘI CHỦ NGHĨA VIỆT NAM
                   </p>
-                  <p className="text-[13px] font-bold sm:text-[14px]">
+                  <p className="text-[13.5pt] font-bold">
                     Độc lập – Tự do – Hạnh phúc
                   </p>
-                  <div className="mx-auto mt-1 h-[1px] w-32 bg-black" />
+                  <div className="mx-auto mt-1 h-[1px] w-36 bg-black" />
                 </div>
               </div>
             </div>
 
-            {/* Tiêu đề Đơn */}
+            {/* Tiêu đề Đơn - Chuẩn 16pt - 17pt */}
             <div className="mt-8 mb-6 text-center">
-              <h2 className="text-[16px] font-bold tracking-wide uppercase sm:text-[18px]">
+              <h2 className="text-[16pt] font-bold tracking-wide uppercase sm:text-[17pt]">
                 {requestType?.name ? requestType.name.toUpperCase() : 'ĐƠN XIN CẤP XÁC NHẬN HỌC SINH – SINH VIÊN'}
               </h2>
             </div>
 
-            {/* Kính gửi */}
-            <div className="space-y-1 pl-4 sm:pl-8 text-[14px]">
+            {/* Kính gửi - Chuẩn 13.5pt - 14pt */}
+            <div className="space-y-1 pl-4 sm:pl-8 text-[13.5pt]">
               <div className="flex items-baseline gap-2">
                 <span className="font-bold whitespace-nowrap">Kính gửi:</span>
                 <span>- Ban Giám hiệu Trường Cao đẳng Việt Mỹ Hà Nội</span>
@@ -1008,8 +1010,8 @@ function StudentConfirmationForm({ onBack, user, requestType }) {
               <p className="pl-16">- Phòng Công tác Sinh viên</p>
             </div>
 
-            {/* Thân đơn */}
-            <div className="mt-6 space-y-2 text-[14px]">
+            {/* Thân đơn - Chuẩn 13.5pt */}
+            <div className="mt-6 space-y-2.5 text-[13.5pt]">
               <div className="flex flex-wrap items-baseline gap-x-6 gap-y-1">
                 <div className="flex-1 min-w-[200px]">
                   <span>Em tên là: </span>
@@ -1069,7 +1071,7 @@ function StudentConfirmationForm({ onBack, user, requestType }) {
                 {CAMPUS_OPTIONS.map((item) => (
                   <span key={item} className="inline-flex items-center gap-1.5 whitespace-nowrap">
                     <span>{item}</span>
-                    <span className="inline-flex h-4 w-4 items-center justify-center border border-black text-[11px] font-bold">
+                    <span className="inline-flex h-4 w-4 items-center justify-center border border-black text-[12pt] font-bold">
                       {formData.campus === item ? '✓' : ''}
                     </span>
                   </span>
@@ -1086,7 +1088,7 @@ function StudentConfirmationForm({ onBack, user, requestType }) {
 
               {/* Nếu đơn có các mục câu hỏi riêng (ví dụ môn thi, ca thi) */}
               {requestType?.fields && requestType.fields.length > 0 && (
-                <div className="pt-2 space-y-1 text-[14px]">
+                <div className="pt-2 space-y-1 text-[13.5pt]">
                   {requestType.fields.map((f) => (
                     <div key={f.id} className="flex flex-wrap items-baseline gap-x-2">
                       <span>- {f.label}:</span>
@@ -1128,19 +1130,27 @@ function StudentConfirmationForm({ onBack, user, requestType }) {
 
             {/* Chân trang chữ ký */}
             <div className="mt-8 pt-2">
-              <div className="text-right italic text-[13.5px] pr-2">{currentDateText}</div>
+              <div className="text-right italic text-[13.5pt] pr-2">{currentDateText}</div>
 
               <div className="mt-4 grid grid-cols-2 text-center">
                 {/* Cột chữ ký GVCN: Để trống theo yêu cầu đối với sinh viên */}
                 <div className="flex flex-col items-center">
-                  <p className="font-bold text-[14px]">Chữ ký GVCN</p>
-                  <p className="text-[12px] italic text-slate-700">(Ký và ghi rõ họ tên)</p>
+                  <p className="font-bold text-[14pt]">Chữ ký GVCN</p>
+                  <p className="text-[12pt] italic text-slate-700">(Ký và ghi rõ họ tên)</p>
 
                   <div className="my-2 flex h-24 w-full items-center justify-center">
                     {teacherSignature ? (
-                      <div className="rounded-lg border border-purple-200 bg-purple-50/70 p-2 text-center text-xs font-semibold text-purple-800">
-                        <span>{teacherSignature}</span>
-                      </div>
+                      teacherSignature.startsWith('data:image') || teacherSignature.startsWith('http') ? (
+                        <img
+                          src={teacherSignature}
+                          alt="Chữ ký GVCN"
+                          className="max-h-20 max-w-[150px] object-contain"
+                        />
+                      ) : (
+                        <div className="rounded-lg border border-purple-200 bg-purple-50/70 p-2 text-center text-xs font-semibold text-purple-800">
+                          <span>{teacherSignature}</span>
+                        </div>
+                      )
                     ) : (
                       // Để trống hoàn toàn cho sinh viên như mẫu văn bản gốc
                       <div className="h-20 w-full" />
@@ -1150,8 +1160,8 @@ function StudentConfirmationForm({ onBack, user, requestType }) {
 
                 {/* Cột chữ ký Người làm đơn */}
                 <div className="flex flex-col items-center">
-                  <p className="font-bold text-[14px]">Người làm đơn</p>
-                  <p className="text-[12px] italic text-slate-700">(Chữ ký, ghi rõ họ tên)</p>
+                  <p className="font-bold text-[14pt]">Người làm đơn</p>
+                  <p className="text-[12pt] italic text-slate-700">(Chữ ký, ghi rõ họ tên)</p>
 
                   <div className="my-2 flex h-24 w-full items-center justify-center">
                     {studentSignature ? (
@@ -1166,7 +1176,7 @@ function StudentConfirmationForm({ onBack, user, requestType }) {
                     )}
                   </div>
 
-                  <p className="font-bold text-slate-900 text-[14px]">
+                  <p className="font-bold text-slate-900 text-[14pt]">
                     {formData.fullName || '...........................'}
                   </p>
                 </div>
@@ -1175,6 +1185,48 @@ function StudentConfirmationForm({ onBack, user, requestType }) {
           </div>
         </div>
       </div>
+
+      {/* Style tối ưu cho In / Lưu PDF chuẩn A4 hành chính: Margin 0mm triệt tiêu hoàn toàn header/footer trình duyệt (URL, localhost, ngày giờ, số trang, tiêu đề) */}
+      <style>{`
+        @page {
+          size: A4 portrait;
+          margin: 0mm !important;
+        }
+        @media print {
+          html, body {
+            margin: 0 !important;
+            padding: 0 !important;
+            background: white !important;
+            -webkit-print-color-adjust: exact !important;
+            print-color-adjust: exact !important;
+          }
+          body * {
+            visibility: hidden !important;
+          }
+          #a4-printable-document,
+          #a4-printable-document * {
+            visibility: visible !important;
+          }
+          #a4-printable-document {
+            position: absolute !important;
+            left: 0 !important;
+            top: 0 !important;
+            width: 100% !important;
+            min-height: 100% !important;
+            margin: 0 !important;
+            padding: 15mm 20mm !important;
+            box-sizing: border-box !important;
+            border: none !important;
+            box-shadow: none !important;
+            background: white !important;
+            font-size: 13.5pt !important;
+            line-height: 1.45 !important;
+          }
+          .no-print {
+            display: none !important;
+          }
+        }
+      `}</style>
     </div>
   );
 }

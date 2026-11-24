@@ -389,14 +389,14 @@ export function signAndApproveByTeacher(requestId, teacherInfoOrSig, signatureOr
           action: 'GVCN ký duyệt & Chuyển Quản trị viên',
           actor: `GVCN ${teacherName}`,
           time: timeStr,
-          note: `GVCN (${teacherName}) đã ký số xác nhận hợp lệ. Đã chuyển hồ sơ về Quản trị viên để đóng dấu và ban hành cho sinh viên.`,
+          note: `GVCN (${teacherName}) đã ký số xác nhận hợp lệ. Đã chuyển hồ sơ về Quản trị viên để kiểm tra và xác nhận hoàn tất cho sinh viên.`,
         },
       ];
 
       return {
         ...req,
         status: 'teacher_approved',
-        statusLabel: 'GV đã duyệt (Chờ Quản trị viên đóng dấu)',
+        statusLabel: 'GV đã duyệt (Chờ Quản trị viên xác nhận)',
         distributionStatus: 'teacher_signed',
         teacherSignature: sigToUse,
         teacherApprovedAt: timeStr,
@@ -413,9 +413,9 @@ export function signAndApproveByTeacher(requestId, teacherInfoOrSig, signatureOr
     // Thông báo cho Quản trị viên
     addNotification({
       recipient: 'admin',
-      title: 'Hồ sơ đã duyệt – Chờ đóng dấu',
-      body: `GVCN ${teacherName} đã ký duyệt đơn ${requestId} của SV ${targetReq.studentName}. Vui lòng đóng dấu ban hành.`,
-      message: `GVCN ${teacherName} đã ký duyệt đơn ${requestId} của SV ${targetReq.studentName}. Vui lòng đóng dấu ban hành.`,
+      title: 'Hồ sơ đã duyệt – Chờ xác nhận',
+      body: `GVCN ${teacherName} đã ký duyệt đơn ${requestId} của SV ${targetReq.studentName}. Vui lòng kiểm tra và xác nhận hoàn tất.`,
+      message: `GVCN ${teacherName} đã ký duyệt đơn ${requestId} của SV ${targetReq.studentName}. Vui lòng kiểm tra và xác nhận hoàn tất.`,
       requestId,
     });
 
@@ -424,8 +424,8 @@ export function signAndApproveByTeacher(requestId, teacherInfoOrSig, signatureOr
       recipient: targetReq.studentCode,
       studentCode: targetReq.studentCode,
       title: 'GVCN đã ký duyệt đơn',
-      body: `Đơn ${requestId} của bạn đã được GVCN ${teacherName} ký số phê duyệt. Đang chờ Quản trị viên đóng dấu ban hành.`,
-      message: `Đơn ${requestId} của bạn đã được GVCN ${teacherName} ký số phê duyệt. Đang chờ Quản trị viên đóng dấu ban hành.`,
+      body: `Đơn ${requestId} của bạn đã được GVCN ${teacherName} ký số phê duyệt. Đang chờ Quản trị viên xác nhận hoàn tất.`,
+      message: `Đơn ${requestId} của bạn đã được GVCN ${teacherName} ký số phê duyệt. Đang chờ Quản trị viên xác nhận hoàn tất.`,
       requestId,
     });
   }
@@ -434,7 +434,68 @@ export function signAndApproveByTeacher(requestId, teacherInfoOrSig, signatureOr
 }
 
 /**
- * Quản trị viên kiểm tra, đóng dấu và Ban hành kết quả cho Sinh viên:
+ * Quản trị viên xóa chữ ký của Giảng viên để yêu cầu Giảng viên ký lại
+ */
+export function resetTeacherSignatureByAdmin(requestId, adminName = 'Quản trị viên') {
+  const currentList = getStoredRequests();
+  const now = new Date();
+  const timeStr = `${String(now.getDate()).padStart(2, '0')}/${String(now.getMonth() + 1).padStart(2, '0')}/${now.getFullYear()} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+
+  let targetReq = null;
+  const updated = currentList.map((req) => {
+    if (req.id === requestId) {
+      targetReq = req;
+      const newLogs = [
+        ...(req.logs || []),
+        {
+          action: 'Xóa chữ ký GV & Mở lại quyền ký',
+          actor: adminName,
+          time: timeStr,
+          note: `${adminName} đã xóa chữ ký GVCN và mở lại quyền để Giảng viên ký lại.`,
+        },
+      ];
+
+      return {
+        ...req,
+        status: 'in_progress',
+        statusLabel: 'Đang xử lý (Chờ GV ký lại)',
+        distributionStatus: 'assigned',
+        teacherSignature: '',
+        teacherApprovedAt: null,
+        teacherApprovedBy: null,
+        logs: newLogs,
+      };
+    }
+    return req;
+  });
+
+  saveStoredRequests(updated);
+
+  if (targetReq) {
+    const teacherRecipient = targetReq.assignedTo?.id || 'teacher';
+    addNotification({
+      recipient: teacherRecipient,
+      title: 'Yêu cầu ký lại đơn từ Quản trị viên',
+      body: `Quản trị viên đã xóa chữ ký đơn ${requestId} (${targetReq.typeName}) của SV ${targetReq.studentName} và mở lại để bạn ký lại.`,
+      message: `Quản trị viên đã xóa chữ ký đơn ${requestId} (${targetReq.typeName}) của SV ${targetReq.studentName} và mở lại để bạn ký lại.`,
+      requestId,
+    });
+
+    addNotification({
+      recipient: targetReq.studentCode,
+      studentCode: targetReq.studentCode,
+      title: 'Hồ sơ đang được điều chỉnh chữ ký',
+      body: `Đơn ${requestId} đang được Giảng viên cập nhật lại chữ ký theo điều phối của Quản trị viên.`,
+      message: `Đơn ${requestId} đang được Giảng viên cập nhật lại chữ ký theo điều phối của Quản trị viên.`,
+      requestId,
+    });
+  }
+
+  return updated;
+}
+
+/**
+ * Quản trị viên kiểm tra và xác nhận hoàn tất kết quả cho Sinh viên:
  * Lúc này đơn mới chính thức "completed" và gửi thông báo qua web cho sinh viên.
  */
 export function finalizeAndNotifyStudentByAdmin(
@@ -469,10 +530,10 @@ export function finalizeAndNotifyStudentByAdmin(
       const newLogs = [
         ...(req.logs || []),
         {
-          action: 'Đóng dấu & Ban hành (Quản trị viên)',
+          action: 'Xác nhận hoàn tất (Quản trị viên)',
           actor: targetAdminName,
           time: timeStr,
-          note: targetNote || `Đã kiểm tra chữ ký GVCN, ký duyệt đóng dấu văn bản và ban hành kết quả cho sinh viên. Địa điểm nhận: ${targetPickup}`,
+          note: targetNote || `Đã kiểm tra chữ ký GVCN và xác nhận hoàn tất đơn cho sinh viên. Địa điểm nhận: ${targetPickup}`,
         },
       ];
 
@@ -497,9 +558,9 @@ export function finalizeAndNotifyStudentByAdmin(
   if (targetReq) {
     addStudentNotification({
       studentCode: targetReq.studentCode,
-      title: 'Hồ sơ đã được phê duyệt & ban hành',
-      message: `Đơn ${targetReq.id} (${targetReq.typeName}) của bạn đã được GVCN ký duyệt và Ban Quản trị viên đóng dấu hoàn tất. Bạn có thể đến ${targetPickup} để nhận bản cứng hoặc xem bản điện tử trên hệ thống.`,
-      body: `Đơn ${targetReq.id} (${targetReq.typeName}) của bạn đã được GVCN ký duyệt và Ban Quản trị viên đóng dấu hoàn tất.`,
+      title: 'Hồ sơ đã được phê duyệt hoàn tất',
+      message: `Đơn ${targetReq.id} (${targetReq.typeName}) của bạn đã được GVCN ký duyệt và Ban Quản trị viên xác nhận hoàn tất. Bạn có thể đến ${targetPickup} để nhận kết quả hoặc tra cứu trực tuyến.`,
+      body: `Đơn ${targetReq.id} (${targetReq.typeName}) của bạn đã được GVCN ký duyệt và Ban Quản trị viên xác nhận hoàn tất.`,
       pickupLocation: targetPickup,
       requestId: targetReq.id,
     });
