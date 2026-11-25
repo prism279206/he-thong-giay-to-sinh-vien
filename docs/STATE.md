@@ -75,6 +75,8 @@ Vùng sở hữu: `src/pages/`, `src/components/`
 - Tinh gọn giao diện Thông tin cá nhân sinh viên: Đã loại bỏ dòng phụ đề "Dữ liệu được đồng bộ..." và huy hiệu "Dữ liệu thật CMS" trong tab Thông tin cá nhân trên `StudentDashboardPage.jsx`, giúp thẻ thông tin hiển thị gọn gàng và trang trọng.
 - Thiết lập tài khoản cán bộ Phòng Công tác sinh viên Nguyễn Thu Phương (`phuong.nguyen@caodangvietmyhanoi.edu.vn`): Đã chuẩn hóa SQL khởi tạo tài khoản trên Supabase và đồng bộ hệ thống xác thực trong `authService.js` (hỗ trợ đăng nhập linh hoạt bằng email trường hoặc mã `phuong.nguyen`, `ctsv`, `ctsv001` với mật khẩu mặc định `123456`; tự động xuất hiện trong danh sách đối tượng điều phối Phòng ban với nhãn "Nguyễn Thu Phương - Phòng công tác sinh viên" trên Admin Portal).
 - Đồng bộ hiển thị Mã cán bộ/giảng viên thật từ database (`profiles.ma_can_bo`): Bổ sung mapping `teacherCode` và `code` trong `LoginPage.jsx` và cập nhật tab Thông tin cá nhân trên `TeacherDashboardPage.jsx`, khắc phục hoàn toàn tình trạng mã cán bộ bị fallback hiển thị thành `GV001`.
+- Loại bỏ biểu tượng mũi tên (`ChevronDown`) thừa ở góc avatar header: Gỡ bỏ mũi tên cạnh tên người dùng trên cả 3 giao diện (Quản trị viên, Giảng viên/Cán bộ, Sinh viên) để tránh gây nhầm lẫn về menu dropdown, giữ thanh tiêu đề gọn gàng và tinh tế.
+- Cập nhật Favicon chính thức của trường: Thay thế biểu tượng mặc định bằng hình ảnh logo nhận diện thương hiệu của Trường Cao đẳng Việt Mỹ Hà Nội trên tab trình duyệt (`index.html`).
 
 ## Đang làm
 - Chạy Seed data mẫu đơn Xác nhận HSSV trên Supabase; chuẩn bị gắn tiếp form cho các loại đơn khác (bảng điểm, miễn giảm học phí, phúc khảo...) và chuyển sang dùng React Router khi hoàn thiện hợp đồng services.

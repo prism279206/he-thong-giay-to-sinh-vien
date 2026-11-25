@@ -7,7 +7,6 @@ import {
   LogOut,
   Search,
   Bell,
-  ChevronDown,
   ChevronRight,
   Menu,
   X,
@@ -1376,7 +1375,6 @@ export default function AdminDashboardPage({ user, logoSrc = DEFAULT_LOGO_SRC, o
                 <p className="text-sm font-semibold text-slate-800">{adminName}</p>
                 <p className="text-xs text-slate-500">Ban Tiếp nhận & Phân luồng</p>
               </div>
-              <ChevronDown className="hidden h-4 w-4 text-slate-400 sm:block" />
             </div>
           </div>
         </header>

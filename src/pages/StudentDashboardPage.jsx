@@ -14,7 +14,6 @@ import {
   ArrowRight,
   Menu,
   X,
-  ChevronDown,
   Eye,
   Trash2,
 } from 'lucide-react';
@@ -652,7 +651,6 @@ function StudentDashboardPage({ user, logoSrc = DEFAULT_LOGO_SRC, onLogout }) {
                 <p className="text-sm font-semibold text-slate-800">{user?.fullName}</p>
                 <p className="text-xs text-slate-500">SV: {user?.studentCode}</p>
               </div>
-              <ChevronDown className="hidden h-4 w-4 text-slate-400 sm:block" />
             </div>
           </div>
         </header>

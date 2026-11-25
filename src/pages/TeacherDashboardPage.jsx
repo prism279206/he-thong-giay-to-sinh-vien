@@ -8,7 +8,6 @@ import {
   LogOut,
   Search,
   Bell,
-  ChevronDown,
   ChevronRight,
   Menu,
   X,
@@ -899,7 +898,6 @@ function TeacherDashboardPage({ user, logoSrc = DEFAULT_LOGO_SRC, onLogout }) {
                 <p className="text-sm font-semibold text-slate-800">{teacherName}</p>
                 <p className="text-xs text-slate-500">{user?.department || user?.title || 'Giảng viên'}</p>
               </div>
-              <ChevronDown className="hidden h-4 w-4 text-slate-400 sm:block" />
             </div>
           </div>
         </header>
