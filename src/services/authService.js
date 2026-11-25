@@ -37,16 +37,14 @@ export function parseLoginIdentifier(input) {
     return { isValid: true, type: 'email', value: lower };
   }
 
-  // 2. Trường hợp là Mã cán bộ / Giảng viên (ví dụ: admincdvmhn, gvcn, QL001, GV001, AD01, admin, dung.dinh1, luan.dam1...)
+  // 2. Trường hợp là Mã cán bộ / Giảng viên (ví dụ: admincdvmhn, gvcn, QL001, GV001, AD01, admin, dung.dinh1, luan.dam1, phuong.nguyen...)
   if (
-    /^(ql|gv|cb|ad|kt)\d+$/i.test(clean) ||
+    /^(ql|gv|cb|ad|kt|ctsv)\d*$/i.test(clean) ||
+    /^[a-z]+(\.[a-z0-9]+)+$/i.test(clean) ||
     lower === 'admin' ||
     lower === 'admincdvmhn' ||
     lower === 'gvcn' ||
-    lower === 'dung.dinh1' ||
-    lower.startsWith('dung.dinh') ||
-    lower === 'luan.dam1' ||
-    lower.startsWith('luan.dam')
+    lower === 'ctsv'
   ) {
     return { isValid: true, type: 'staff_code', value: lower };
   }
@@ -97,10 +95,12 @@ export async function signIn(identifier, password) {
       targetEmail = 'admin@caodangvietmyhanoi.edu.vn';
     } else if (valLower === 'gv002' || valLower === 'gvcn' || valLower === 'gv001') {
       targetEmail = 'huong.do1@caodangvietmyhanoi.edu.vn';
-    } else if (valLower === 'dung.dinh1' || valLower === 'kt001' || valLower.startsWith('dung')) {
+    } else if (valLower.includes('.')) {
+      targetEmail = `${valLower}@caodangvietmyhanoi.edu.vn`;
+    } else if (valLower.startsWith('ctsv')) {
+      targetEmail = 'phuong.nguyen@caodangvietmyhanoi.edu.vn';
+    } else if (valLower.startsWith('kt')) {
       targetEmail = 'dung.dinh1@caodangvietmyhanoi.edu.vn';
-    } else if (valLower === 'luan.dam1' || valLower === 'gv003' || valLower.startsWith('luan')) {
-      targetEmail = 'luan.dam1@caodangvietmyhanoi.edu.vn';
     }
   }
 
@@ -115,7 +115,7 @@ export async function signIn(identifier, password) {
   }
 
   // 3. Nếu người dùng nhập Email sinh viên -> Đối chiếu tên và số với hồ sơ
-  if (type === 'email' && value.endsWith('@caodangvietmyhanoi.edu.vn')) {
+  if (type === 'email' && (value.endsWith('@caodangvietmyhanoi.edu.vn') || value.endsWith('@caodangvietmy.edu.vn'))) {
     const username = value.split('@')[0];
     const match = username.match(/^([a-z]+)(\d+)$/);
     if (match) {
@@ -131,22 +131,8 @@ export async function signIn(identifier, password) {
       if (!verifyRes.isValid) {
         return { data: null, error: 'Tài khoản hoặc mật khẩu không chính xác.' };
       }
-    } else {
-      // Nếu email không theo định dạng [Tên][Mã] (kiểm tra xem có phải email cán bộ/giảng viên không)
-      const isKnownStaffEmail =
-        value.includes('admin') ||
-        value.includes('gvcn') ||
-        value.includes('ql') ||
-        value.includes('huong.do') ||
-        value.includes('dung.dinh') ||
-        value.includes('luan.dam');
-      if (!isKnownStaffEmail) {
-        return {
-          data: null,
-          error: 'Tài khoản hoặc mật khẩu không chính xác.',
-        };
-      }
     }
+    // Nếu email không theo định dạng [Tên][Mã] sinh viên -> Đó là email cán bộ / giảng viên, tiếp tục xuống bước 4 để xác thực qua Supabase Auth
   }
 
   // 3. Nếu là Sinh viên đã xác thực danh tính qua CMS API -> Bắt buộc mật khẩu chính xác
@@ -245,6 +231,17 @@ export async function signIn(identifier, password) {
         resolvedName = 'Đỗ Thị Hương';
         resolvedCode = 'GV002';
         resolvedDonVi = 'Giảng viên - GVCN';
+      } else if (
+        emailLower.includes('phuong.nguyen') ||
+        valLower === 'phuong.nguyen' ||
+        valLower === 'ctsv001' ||
+        valLower === 'ctsv' ||
+        valLower.startsWith('phuong')
+      ) {
+        resolvedRole = 'staff';
+        resolvedName = 'Nguyễn Thu Phương';
+        resolvedCode = 'phuong.nguyen';
+        resolvedDonVi = 'Phòng công tác sinh viên';
       }
 
       return {
@@ -366,7 +363,32 @@ export async function signIn(identifier, password) {
       };
     }
 
-    // 4.5 Nếu là sinh viên (Bắt buộc phải có hồ sơ thực tế từ API CMS)
+    // 4.5 Nếu là Cán bộ CTSV Nguyễn Thu Phương (phuong.nguyen@..., mã phuong.nguyen, CTSV001)
+    if (
+      (type === 'staff_code' && (valLower === 'phuong.nguyen' || valLower === 'ctsv001' || valLower === 'ctsv' || valLower.startsWith('phuong'))) ||
+      targetEmail.includes('phuong.nguyen') ||
+      targetEmail.includes('ctsv')
+    ) {
+      const phuongEmail = targetEmail.includes('@')
+        ? targetEmail
+        : 'phuong.nguyen@caodangvietmyhanoi.edu.vn';
+      return {
+        data: {
+          user: { id: 'b0000000-0000-0000-0000-000000000003', email: phuongEmail, role: 'staff', code: 'phuong.nguyen' },
+          profile: {
+            id: 'b0000000-0000-0000-0000-000000000003',
+            email: phuongEmail,
+            ho_ten: 'Nguyễn Thu Phương',
+            role: 'staff',
+            ma_can_bo: 'phuong.nguyen',
+            don_vi: 'Phòng công tác sinh viên',
+          },
+        },
+        error: null,
+      };
+    }
+
+    // 4.6 Nếu là sinh viên (Bắt buộc phải có hồ sơ thực tế từ API CMS)
     if (studentCmsData) {
       const student = studentCmsData;
       return {

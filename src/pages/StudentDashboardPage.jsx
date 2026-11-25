@@ -770,16 +770,8 @@ function StudentDashboardPage({ user, logoSrc = DEFAULT_LOGO_SRC, onLogout }) {
 
           {activeTab === 'profile' && (
             <section className="rounded-2xl border border-slate-200/70 bg-white p-6 shadow-xs sm:p-8">
-              <div className="flex items-center justify-between border-b border-slate-100 pb-4">
-                <div>
-                  <h1 className="text-lg font-bold text-slate-800">Thông tin cá nhân sinh viên</h1>
-                  <p className="mt-1 text-xs text-slate-500">
-                    Dữ liệu được đồng bộ chính thức theo thời gian thực từ Hệ thống Thông tin Sinh viên (CIS).
-                  </p>
-                </div>
-                <span className="rounded-full bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700">
-                  Dữ liệu thật CMS
-                </span>
+              <div className="border-b border-slate-100 pb-4">
+                <h1 className="text-lg font-bold text-slate-800">Thông tin cá nhân sinh viên</h1>
               </div>
 
               <div className="mt-5 grid grid-cols-1 gap-4 text-sm sm:grid-cols-2 md:grid-cols-3">
