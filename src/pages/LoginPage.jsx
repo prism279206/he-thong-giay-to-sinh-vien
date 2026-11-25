@@ -65,6 +65,8 @@ function LoginPage({ logoSrc = DEFAULT_LOGO_SRC, onLoginSuccess }) {
                 fullName: prof.ho_ten || prof.full_name || 'Người dùng',
                 studentCode: prof.ma_sinh_vien || prof.student_code || '',
                 staffCode: prof.ma_can_bo || prof.ma_sinh_vien || '',
+                teacherCode: prof.ma_can_bo || prof.ma_sinh_vien || '',
+                code: prof.ma_can_bo || prof.ma_sinh_vien || '',
                 role: prof.role === 'staff' ? 'teacher' : (prof.role || 'student'),
                 department: prof.don_vi || '',
                 className: prof.lop || prof.class_name || '',

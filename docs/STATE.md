@@ -74,6 +74,7 @@ Vùng sở hữu: `src/pages/`, `src/components/`
 - Tinh chỉnh giao diện đăng nhập: Chuẩn hóa placeholder ô tài khoản thành 'Mã sinh viên hoặc email trường' trên `LoginPage.jsx` và cấu hình `.gitignore` bỏ qua file nháp báo cáo thực tập.
 - Tinh gọn giao diện Thông tin cá nhân sinh viên: Đã loại bỏ dòng phụ đề "Dữ liệu được đồng bộ..." và huy hiệu "Dữ liệu thật CMS" trong tab Thông tin cá nhân trên `StudentDashboardPage.jsx`, giúp thẻ thông tin hiển thị gọn gàng và trang trọng.
 - Thiết lập tài khoản cán bộ Phòng Công tác sinh viên Nguyễn Thu Phương (`phuong.nguyen@caodangvietmyhanoi.edu.vn`): Đã chuẩn hóa SQL khởi tạo tài khoản trên Supabase và đồng bộ hệ thống xác thực trong `authService.js` (hỗ trợ đăng nhập linh hoạt bằng email trường hoặc mã `phuong.nguyen`, `ctsv`, `ctsv001` với mật khẩu mặc định `123456`; tự động xuất hiện trong danh sách đối tượng điều phối Phòng ban với nhãn "Nguyễn Thu Phương - Phòng công tác sinh viên" trên Admin Portal).
+- Đồng bộ hiển thị Mã cán bộ/giảng viên thật từ database (`profiles.ma_can_bo`): Bổ sung mapping `teacherCode` và `code` trong `LoginPage.jsx` và cập nhật tab Thông tin cá nhân trên `TeacherDashboardPage.jsx`, khắc phục hoàn toàn tình trạng mã cán bộ bị fallback hiển thị thành `GV001`.
 
 ## Đang làm
 - Chạy Seed data mẫu đơn Xác nhận HSSV trên Supabase; chuẩn bị gắn tiếp form cho các loại đơn khác (bảng điểm, miễn giảm học phí, phúc khảo...) và chuyển sang dùng React Router khi hoàn thiện hợp đồng services.

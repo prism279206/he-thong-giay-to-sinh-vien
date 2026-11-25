@@ -660,7 +660,7 @@ function TeacherDashboardPage({ user, logoSrc = DEFAULT_LOGO_SRC, onLogout }) {
     const signerDetails = {
       name: teacherName,
       email: user?.email || '',
-      id: user?.teacherCode || user?.studentCode || user?.code || 'GV001',
+      id: user?.staffCode || user?.teacherCode || user?.code || user?.id || 'CB001',
       department: user?.department || '',
       donVi: user?.department || '',
     };
@@ -1341,7 +1341,7 @@ function TeacherDashboardPage({ user, logoSrc = DEFAULT_LOGO_SRC, onLogout }) {
           {/* Tab Thông tin cá nhân */}
           {activeTab === 'profile' && (
             <section className="rounded-2xl border border-slate-200/70 bg-white p-6 shadow-xs sm:p-8">
-              <h1 className="text-lg font-bold text-slate-800">Thông tin Giảng viên</h1>
+              <h1 className="text-lg font-bold text-slate-800">Thông tin Cán bộ / Giảng viên</h1>
               <div className="mt-4 grid grid-cols-1 gap-4 rounded-xl bg-slate-50 p-4 text-sm sm:grid-cols-2">
                 <div>
                   <p className="text-slate-500">Họ và tên</p>
@@ -1349,22 +1349,26 @@ function TeacherDashboardPage({ user, logoSrc = DEFAULT_LOGO_SRC, onLogout }) {
                 </div>
                 <div>
                   <p className="text-slate-500">Mã cán bộ / Giảng viên</p>
-                  <p className="mt-0.5 font-semibold text-slate-800">{user?.teacherCode || 'GV001'}</p>
+                  <p className="mt-0.5 font-semibold text-slate-800">
+                    {user?.staffCode || user?.teacherCode || user?.code || 'Chưa cập nhật'}
+                  </p>
                 </div>
                 <div>
-                  <p className="text-slate-500">Khoa / Bộ môn</p>
+                  <p className="text-slate-500">Đơn vị / Phòng ban / Khoa</p>
                   <p className="mt-0.5 font-semibold text-slate-800">
-                    {user?.department || 'Khoa Công nghệ thông tin'}
+                    {user?.department || 'Chưa cập nhật'}
                   </p>
                 </div>
                 <div>
                   <p className="text-slate-500">Chức vụ / Vai trò</p>
-                  <p className="mt-0.5 font-semibold text-[#2563EB]">{user?.title || 'Giảng viên'}</p>
+                  <p className="mt-0.5 font-semibold text-[#2563EB]">
+                    {user?.title || user?.department || 'Cán bộ xử lý'}
+                  </p>
                 </div>
                 <div className="sm:col-span-2">
                   <p className="text-slate-500">Email công vụ</p>
                   <p className="mt-0.5 font-semibold text-slate-800">
-                    {user?.email || 'gvcn@caodangvietmyhanoi.edu.vn'}
+                    {user?.email || 'Chưa cập nhật'}
                   </p>
                 </div>
               </div>
@@ -1489,8 +1493,9 @@ function TeacherDashboardPage({ user, logoSrc = DEFAULT_LOGO_SRC, onLogout }) {
 
               const mySlot = signers.find((s) => {
                 if (user?.email && s.email && s.email.toLowerCase() === user.email.toLowerCase()) return true;
-                if (user?.teacherCode && s.id === user.teacherCode) return true;
-                if (user?.code && s.id === user.code) return true;
+                if (user?.staffCode && (s.id === user.staffCode || s.maCanBo === user.staffCode)) return true;
+                if (user?.teacherCode && (s.id === user.teacherCode || s.maCanBo === user.teacherCode)) return true;
+                if (user?.code && (s.id === user.code || s.maCanBo === user.code)) return true;
                 if (user?.fullName && s.name && s.name.trim().toLowerCase() === user.fullName.trim().toLowerCase()) return true;
                 return false;
               });
@@ -1743,8 +1748,9 @@ function TeacherDashboardPage({ user, logoSrc = DEFAULT_LOGO_SRC, onLogout }) {
 
                 const mySlot = signers.find((s) => {
                   if (user?.email && s.email && s.email.toLowerCase() === user.email.toLowerCase()) return true;
-                  if (user?.teacherCode && s.id === user.teacherCode) return true;
-                  if (user?.code && s.id === user.code) return true;
+                  if (user?.staffCode && (s.id === user.staffCode || s.maCanBo === user.staffCode)) return true;
+                  if (user?.teacherCode && (s.id === user.teacherCode || s.maCanBo === user.teacherCode)) return true;
+                  if (user?.code && (s.id === user.code || s.maCanBo === user.code)) return true;
                   if (user?.fullName && s.name && s.name.trim().toLowerCase() === user.fullName.trim().toLowerCase()) return true;
                   return false;
                 });
